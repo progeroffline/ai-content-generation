@@ -43,6 +43,9 @@ class Vast:
         rejected = isinstance(data, dict) and data.get('success') is False
         if status >= 400 or rejected:
             log.warning('<- %s %s HTTP %s in %.0f ms: %s', method, path, status, elapsed, str(data)[:2000])
+            if data.get('error') == 'resources_unavailable':
+                raise VastError('GPU этого сервера сейчас занят другим клиентом Vast. Запуск возможен, когда он освободится: '
+                                'повторите позже или арендуйте другой сервер.')
             message = data.get('msg') or data.get('message') or data.get('error') or str(data)
             raise VastError(f'Vast.ai HTTP {status}: {str(message)[:1200]}')
         log.info('<- %s %s HTTP %s in %.0f ms', method, path, status, elapsed)
