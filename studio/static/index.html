@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frame — AI Studio</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/gpu.css"></head>
+<body>
+<header><a class="brand" href="/">◈ <span>FRAME<span class="brand-sub"> / AI STUDIO</span></span></a><div class="header-actions"><a href="#gpu">GPU</a><span id="connection" class="connection">Проверяем сервер…</span></div></header>
+<main>
+<section class="intro"><div><p class="eyebrow">ИЗ ИДЕИ В КАДР</p><h1>Создайте то,<br>что представляете.</h1><p class="muted">Изображения и видео в одном пространстве.</p></div><div class="intro-note"><span class="dot"></span> Ваша личная студия<br><span class="muted">Результаты сохраняются на сервере</span></div></section>
+<div class="workspace">
+<section class="panel compose"><div class="panel-title"><h2>Новая генерация</h2><span class="small">01</span></div>
+<form id="form">
+<label for="mode">Что создаём</label><select id="mode"><option value="image">Изображение</option><option value="video">Видео из текста</option><option value="image_video">Видео из изображения</option></select>
+<div class="model"><span id="model-name">Z-Image-Turbo</span><span>Локальная модель</span></div>
+<div id="source-wrap" hidden><label for="source">Исходный кадр</label><input id="source" type="file" accept="image/png,image/jpeg,image/webp"><p class="hint">PNG, JPEG или WebP, до 20 МБ. Можно выбрать кадр из галереи.</p><img id="source-preview" hidden alt="Исходный кадр"><p id="source-status" class="hint"></p></div>
+<label for="prompt">Опишите сцену</label><textarea id="prompt" required maxlength="4000" rows="6" placeholder="Портрет человека у окна, мягкий дневной свет, естественная текстура кожи, съёмка на 85 мм…"></textarea>
+<div class="prompt-foot"><button class="text-button" id="example" type="button">Попробовать пример ↗</button><span id="counter">0 / 4000</span></div>
+<div class="row"><div><label for="size">Формат</label><select id="size"><option value="square">Квадрат · 1024 × 1024</option><option value="landscape">Альбом · 1216 × 832</option><option value="portrait">Портрет · 832 × 1216</option></select></div><div id="duration-wrap" hidden><label for="seconds">Длительность</label><select id="seconds"><option value="5">≈ 5 секунд</option><option value="10">≈ 10 секунд</option></select></div></div>
+<details><summary>Дополнительные параметры</summary><label for="seed">Seed <span class="muted">· пусто — случайный</span></label><input type="number" id="seed" min="0" max="4294967295" step="1" placeholder="Случайный"></details>
+<p id="error" role="alert" hidden></p><button class="primary" id="submit" type="submit">Создать изображение <span>↗</span></button><p class="hint">Можно закрыть страницу: сервер продолжит работу.</p>
+</form></section>
+<section class="results"><div class="gallery-head"><div><h2>Ваши кадры</h2><p class="muted" id="count">Загружаем историю…</p></div><button id="refresh" class="secondary">Обновить ↻</button></div>
+<div id="jobs" aria-live="polite"><div class="empty"><div class="empty-icon">◈</div><h3>Здесь начинается история</h3><p>Опишите первый кадр — он появится здесь<br>и останется в вашей галерее.</p></div></div>
+<p class="hint">История хранится на сервере. Прогресс отражает текущий этап, а не оставшееся время.</p></section>
+</div></main>
+<section id="gpu" class="gpu-section">
+<div class="section-head"><div><p class="eyebrow">ИНФРАСТРУКТУРА</p><h2>GPU-серверы Vast.ai</h2><p class="muted">Ключ хранится только на сервере. Остановка GPU не отключает эту панель.</p></div><button id="vast-refresh" class="secondary">Обновить ↻</button></div>
+<p id="vast-message" class="notice">Проверяем настройку Vast.ai…</p>
+<div id="instances" class="server-grid"></div>
+<details id="rent-panel" class="rent-panel">
+<summary>Подобрать новый сервер</summary>
+<form id="offer-form">
+<fieldset><legend>GPU</legend><label class="check"><input type="checkbox" name="gpu" value="RTX 3090" checked> RTX 3090</label><label class="check"><input type="checkbox" name="gpu" value="RTX 4090" checked> RTX 4090</label><label class="check"><input type="checkbox" name="gpu" value="RTX 5090" checked> RTX 5090</label></fieldset>
+<div class="row"><div><label for="max-price">До $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.80"></div><div><label for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="200"></div></div>
+<button class="primary" type="submit">Найти предложения <span>↗</span></button>
+</form>
+<div id="offers" class="server-grid"></div>
+</details>
+<p class="hint danger-note">Stop обычно продолжает тарификацию диска. Destroy безвозвратно удаляет инстанс и его локальные данные — сначала сохраните результаты.</p>
+</section>
+<footer><span>FRAME / PERSONAL GENERATION STUDIO</span><span>Z-Image + Wan 2.2 · Powered by ComfyUI</span></footer>
+<script src="/static/app.js" defer></script></body></html>

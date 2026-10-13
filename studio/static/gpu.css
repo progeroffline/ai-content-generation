@@ -1,0 +1,37 @@
+.header-actions { display: flex; align-items: center; gap: 14px; }
+.header-actions > a { color: var(--muted); text-decoration: none; font-size: 12px; }
+.gpu-section { max-width: 1500px; margin: 0 auto; padding: 10px 5vw 70px; }
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-top: 42px; }
+.section-head .eyebrow { margin-bottom: 12px; }
+.section-head .muted { margin-bottom: 0; }
+.notice { padding: 13px 15px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: #161b17; line-height: 1.5; }
+.server-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.server-card { background: #191e1a; border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+.server-card h3 { font-size: 16px; margin: 18px 0 10px; }
+.server-head, .server-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.server-actions { justify-content: flex-start; margin-top: 16px; flex-wrap: wrap; }
+.server-price { font-size: 12px; }
+.server-meta, .status-line { font-size: 11px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.status-line { color: var(--accent); }
+.danger { border: 1px solid #6b3b35; color: #ffc3af; padding: 9px 13px; border-radius: 7px; background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
+.compact { width: auto; padding: 10px 14px; display: inline-flex; gap: 24px; }
+.rent-panel { margin: 26px 0; background: #191e1a; border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.rent-panel > summary { color: #f0f1ea; font-size: 15px; }
+.rent-panel form { max-width: 620px; margin: 18px 0 24px; }
+.rent-panel fieldset { border: 0; padding: 0; margin: 0 0 15px; }
+.rent-panel legend { font-size: 12px; margin-bottom: 8px; }
+.check { display: inline-flex; align-items: center; gap: 6px; margin: 5px 16px 5px 0; color: var(--muted); }
+.check input { width: auto; }
+.danger-note { color: #cda69a; }
+.server-card button:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 900px) { .server-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .header-actions { gap: 8px; }
+  .header-actions > a { display: none; }
+  .server-grid { grid-template-columns: 1fr; }
+  .section-head { padding-top: 30px; }
+  .gpu-section { padding-bottom: 45px; }
+  .server-card, .rent-panel { padding: 16px; }
+  .secondary, .danger, .compact { min-height: 44px; }
+  .section-head .secondary { flex: 0 0 auto; }
+}

@@ -1,0 +1,8 @@
+{$STUDIO_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy studio:8090
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Referrer-Policy "no-referrer"
+    }
+}

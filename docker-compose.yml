@@ -1,0 +1,15 @@
+services:
+  studio:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      STUDIO_DATA: /data
+      STUDIO_HOST: 0.0.0.0
+      STUDIO_PORT: 8090
+    volumes:
+      - studio_data:/data
+    ports:
+      - "127.0.0.1:8090:8090"
+volumes:
+  studio_data:
