@@ -146,7 +146,9 @@ URL и `COMFY_AUTHORIZATION`.
 GitHub Actions `CI` запускает тесты на каждый push/PR. Ручной workflow
 `Deploy control panel` обновляет VPS. В GitHub → Settings → Secrets and variables →
 Actions добавьте `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_SSH_KEY` и
-`DEPLOY_KNOWN_HOSTS`. Файл `.env` создаётся на VPS один раз и не перезаписывается.
+`DEPLOY_KNOWN_HOSTS`, затем создайте repository variable `ENABLE_DEPLOY=true`.
+После этого успешный CI в `main` автоматически обновляет VPS; workflow также можно
+запустить вручную. Файл `.env` создаётся на VPS один раз и не перезаписывается.
 
 ## 5. Видео после успешного изображения
 
