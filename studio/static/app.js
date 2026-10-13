@@ -1,6 +1,13 @@
 const $ = id => document.getElementById(id);
 let sourceId = null, sourceBusy = false, requestKey = null, requestBody = null;
 const cards = new Map();
+// crypto.randomUUID exists only on HTTPS/localhost; the panel is also opened over plain HTTP.
+function uuid(){
+  if(crypto.randomUUID)return crypto.randomUUID();
+  const b=crypto.getRandomValues(new Uint8Array(16));b[6]=b[6]&15|64;b[8]=b[8]&63|128;
+  const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
 async function api(path, options={}) {
   const response = await fetch(path, {...options, headers:{'X-Studio-Request':'1',...options.headers}});
   if (!response.ok) {
@@ -41,7 +48,7 @@ $('form').onsubmit=async e=>{
   const data={prompt:$('prompt').value,mode:$('mode').value,size:$('size').value,seconds:Number($('seconds').value),seed:$('seed').value===''?null:Number($('seed').value),source_id:sourceId};
   if(data.mode==='image_video'&&!sourceId){error('Загрузите или выберите исходный кадр');return;}
   const body=JSON.stringify(data);
-  if(body!==requestBody){requestKey=crypto.randomUUID();requestBody=body;}
+  if(body!==requestBody){requestKey=uuid();requestBody=body;}
   $('submit').disabled=true;
   try{await api('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':requestKey},body});requestBody=null;requestKey=null;await refresh();}
   catch(e){error(e.message+' Повторная отправка тех же параметров защищена от дублей.');}
@@ -70,7 +77,7 @@ async function refresh(){
     jobs.forEach((j,index)=>{const signature=JSON.stringify(j);let c=cards.get(j.id);if(!c||c.signature!==signature){const node=renderCard(j);if(c)c.node.replaceWith(node);c={node,signature};cards.set(j.id,c);}const current=$('jobs').children[index];if(current!==c.node)$('jobs').insertBefore(c.node,current||null);});
   }catch(e){$('count').textContent='Не удалось загрузить историю. Повторяем подключение…';}
 }
-async function connection(){try{const s=await api('/api/status');$('connection').textContent=s.online?'● GPU подключён':'○ ComfyUI недоступен';$('connection').classList.toggle('online',s.online);}catch{$('connection').textContent='○ Нет связи с сервером';}}
+async function connection(){try{const s=await api('/api/status');const m=s.models,mark=ok=>ok?'✓':'✗ не установлены';$('connection').textContent=s.online?'● GPU подключён'+(m?` · модели: фото ${mark(m.image)}, видео ${mark(m.video)}`:''):'○ GPU-сервер не готов';$('connection').classList.toggle('online',s.online);}catch{$('connection').textContent='○ Нет связи с сервером';}}
 $('refresh').onclick=()=>{refresh();connection();};
 function money(value){const n=Number(value);return Number.isFinite(n)?`$${n.toFixed(3)}/ч`:'Цена не указана';}
 function ram(value){const n=Number(value);if(!Number.isFinite(n))return '—';return n>1024?`${Math.round(n/1024)} ГБ`:`${Math.round(n)} ГБ`;}

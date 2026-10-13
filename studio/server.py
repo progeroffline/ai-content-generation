@@ -90,8 +90,14 @@ async def status(request):
     try:
         await s['comfy'].locate()
         stats = await s['comfy'].request('GET','/system_stats')
+        try:
+            installed = await s['comfy'].request('GET','/models/diffusion_models')
+            models = {'image':'z_image_turbo_bf16.safetensors' in installed,
+                      'video':'wan2.2_ti2v_5B_fp16.safetensors' in installed}
+        except Exception:
+            models = None
         return web.json_response({'online':True, 'devices':[d.get('name') for d in stats.get('devices',[])],
-                                  'time':time.time()})
+                                  'models':models, 'time':time.time()})
     except Exception:
         return web.json_response({'online':False, 'devices':[], 'time':time.time()})
 
