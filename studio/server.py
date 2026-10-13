@@ -88,6 +88,7 @@ async def asset(request):
 async def status(request):
     s = request.app[STATE]
     try:
+        await s['comfy'].locate()
         stats = await s['comfy'].request('GET','/system_stats')
         return web.json_response({'online':True, 'devices':[d.get('name') for d in stats.get('devices',[])],
                                   'time':time.time()})
@@ -250,9 +251,10 @@ def create_app(root, comfy_url, password, start_worker=True, vast_api_key=None,
             raise RuntimeError('Другой процесс Studio уже использует эту папку данных')
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session, \
                    aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45)) as vast_session:
-            s['comfy'] = Comfy(comfy_url,session,s['store'],comfy_authorization)
             s['vast'] = Vast(vast_api_key,vast_session,vast_template_id,vast_image) if vast_api_key else None
-            log.info('started comfy=%s vast=%s template=%s image=%s', comfy_url, bool(s['vast']),
+            discover = s['vast'].comfy_endpoint if s['vast'] and not comfy_url else None
+            s['comfy'] = Comfy(comfy_url,session,s['store'],comfy_authorization,discover)
+            log.info('started comfy=%s vast=%s template=%s image=%s', comfy_url or 'auto', bool(s['vast']),
                      vast_template_id or 'auto', s['vast'].image if s['vast'] else None)
             task = asyncio.create_task(worker(s['store'],s['comfy'])) if start_worker else None
             try:

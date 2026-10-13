@@ -19,10 +19,27 @@ class GenerationError(Exception):
 
 
 class Comfy:
-    def __init__(self, url, session, store, authorization=None):
+    def __init__(self, url, session, store, authorization=None, discover=None):
         self.url = url.rstrip('/')
         self.session = session
         self.store = store
+        self.headers = {'Authorization': authorization} if authorization else {}
+        self.discover = discover
+        self.checked = None
+
+    async def locate(self):
+        # Without a fixed COMFY_URL follow whichever GPU instance is running now.
+        if not self.discover or (self.checked is not None and time.monotonic()-self.checked < 30):
+            return
+        self.checked = time.monotonic()
+        try:
+            url, authorization = await self.discover() or ('', None)
+        except Exception as e:
+            log.warning('ComfyUI discovery failed: %r', e)
+            return
+        if url != self.url:
+            log.info('ComfyUI endpoint changed: %s -> %s', self.url or 'none', url or 'none')
+        self.url = url
         self.headers = {'Authorization': authorization} if authorization else {}
 
     async def request(self, method, path, **kwargs):
@@ -181,6 +198,11 @@ async def worker(store, comfy):
                          error='Ответ на отправку потерян. Автоповтор отключён, чтобы не запустить генерацию дважды.')
             continue
         context_id.set(job['id'][:8])
+        await comfy.locate()
+        if not comfy.url:
+            store.update(job['id'], stage='Нет запущенного GPU-сервера • ожидание', progress=None)
+            await asyncio.sleep(5)
+            continue
         log.info('job %s picked status=%s params=%s', job['id'], job['status'], job['params'])
         try:
             await comfy.run(job)

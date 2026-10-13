@@ -127,11 +127,19 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
             self.sent = method, path, kwargs['json']
             return {'new_contract': 84}
 
-    async def test_rent_uses_pinned_template_and_cancels_unavailable_offer(self):
+    async def test_rent_uses_pinned_template(self):
         vast = self.RecordedVast('test-key', None, template_id='template-hash')
         await vast.rent(99, 200)
         self.assertEqual(vast.sent, ('PUT', '/api/v0/asks/99/', {
-            'disk': 200, 'cancel_unavail': True, 'template_hash_id': 'template-hash'}))
+            'client_id': 'me', 'disk': 200, 'template_hash_id': 'template-hash'}))
+
+    async def test_comfy_endpoint_follows_running_instance(self):
+        vast = self.RecordedVast('test-key', None)
+        vast.request = lambda *a, **k: asyncio.sleep(0, {'instances': [
+            {'actual_status': 'loading', 'public_ipaddr': '1.1.1.1', 'jupyter_token': 'x', 'ports': None},
+            {'actual_status': 'running', 'public_ipaddr': '2.2.2.2 ', 'jupyter_token': 'secret',
+             'ports': {'8188/tcp': [{'HostPort': '4000'}]}}]})
+        self.assertEqual(await vast.comfy_endpoint(), ('http://2.2.2.2:4000', 'Bearer secret'))
 
     async def test_rent_resolves_recommended_template_for_image(self):
         vast = self.RecordedVast('test-key', None)

@@ -2,11 +2,13 @@ import asyncio
 import json
 import logging
 import math
+import re
 import time
 
 import aiohttp
 
 log = logging.getLogger('studio.vast')
+SECRET = re.compile(r"('[^']*(?:token|api_key|password)[^']*': )'[^']*'")
 
 
 class VastError(Exception):
@@ -21,6 +23,7 @@ class Vast:
         self.session = session
         self.template_id = str(template_id).strip() if template_id else None
         self.image = (image or 'vastai/comfy:@vastai-automatic-tag').strip()
+        self.recommended = None
 
     async def request(self, method, path, **kwargs):
         headers = {'Authorization': 'Bearer '+self.api_key, 'Accept': 'application/json'}
@@ -43,7 +46,7 @@ class Vast:
             message = data.get('msg') or data.get('message') or data.get('error') or str(data)
             raise VastError(f'Vast.ai HTTP {status}: {str(message)[:1200]}')
         log.info('<- %s %s HTTP %s in %.0f ms', method, path, status, elapsed)
-        log.debug('<- body %s', str(data)[:4000])
+        log.debug('<- body %s', SECRET.sub(r"\1'***'", str(data))[:4000])
         return data
 
     @staticmethod
@@ -98,23 +101,43 @@ class Vast:
             'gpu_name': {'in': names}, 'dph_total': {'lte': price},
             'reliability2': {'gte': 0.97}, 'disk_space': {'gte': disk},
         }
+        if not self.template_id:
+            # Hosts the template cannot run on (e.g. too old CUDA) would start a broken instance.
+            query.update(json.loads((await self._recommended() or {}).get('extra_filters') or '{}'))
         data = await self.request('POST', '/api/v0/bundles', json=query)
         rows = data.get('offers', data if isinstance(data, list) else [])
         log.info('offers gpu=%s max_price=%s disk=%s -> %d found', names, price, disk, len(rows))
         return [self._offer(row) for row in rows]
 
-    async def _template(self):
-        # The template carries the real image tag, ports and env; resolve Vast's current one unless pinned.
-        if self.template_id:
-            return self.template_id
+    async def _recommended(self):
+        # Vast's current recommended template for our image, cached for an hour.
+        if self.recommended and time.monotonic()-self.recommended[0] < 3600:
+            return self.recommended[1]
         repo = self.image.split(':', 1)[0]
         data = await self.request('GET', '/api/v0/template/', params={
             'select_filters': json.dumps({'recommended': {'eq': True}})})
         for row in data.get('templates', []):
             if row.get('image') == repo and row.get('hash_id'):
-                log.info('template resolved for %s: %s (%s:%s)', repo, row['hash_id'], row.get('name'), row.get('tag'))
-                return row['hash_id']
+                log.info('template resolved for %s: %s (%s:%s) filters=%s', repo, row['hash_id'],
+                         row.get('name'), row.get('tag'), row.get('extra_filters'))
+                self.recommended = time.monotonic(), row
+                return row
         log.warning('no recommended Vast template found for image %s', repo)
+        return None
+
+    async def _template(self):
+        # The template carries the real image tag, ports and env; use Vast's current one unless pinned.
+        if self.template_id:
+            return self.template_id
+        return (await self._recommended() or {}).get('hash_id')
+
+    async def comfy_endpoint(self):
+        # ComfyUI of the running instance: the template publishes it on 8188 behind the instance token.
+        data = await self.request('GET', '/api/v1/instances')
+        for row in data.get('instances', []):
+            mapped = (row.get('ports') or {}).get('8188/tcp')
+            if row.get('actual_status') == 'running' and mapped and row.get('public_ipaddr') and row.get('jupyter_token'):
+                return f"http://{row['public_ipaddr'].strip()}:{mapped[0]['HostPort']}", 'Bearer '+row['jupyter_token']
         return None
 
     async def _owned(self, instance_id):
@@ -145,7 +168,8 @@ class Vast:
             raise ValueError('Некорректный ID предложения или размер диска')
         if not 50 <= disk <= 2000:
             raise ValueError('Диск должен быть от 50 до 2000 ГБ')
-        body = {'disk': disk, 'cancel_unavail': True}
+        # Without client_id Vast answers no_such_ask for offers that are available.
+        body = {'client_id': 'me', 'disk': disk}
         template = await self._template()
         if template:
             body['template_hash_id'] = template
@@ -155,5 +179,5 @@ class Vast:
             body.update(image=self.image, onstart='')
         log.info('rent offer=%s body=%s', offer_id, body)
         result = await self.request('PUT', f'/api/v0/asks/{offer_id}/', json=body)
-        log.info('rent offer=%s result=%s', offer_id, str(result)[:1200])
+        log.info('rent offer=%s new_contract=%s', offer_id, result.get('new_contract'))
         return result
