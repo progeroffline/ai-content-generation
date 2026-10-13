@@ -1,6 +1,12 @@
+import asyncio
+import json
+import logging
 import math
+import time
 
 import aiohttp
+
+log = logging.getLogger('studio.vast')
 
 
 class VastError(Exception):
@@ -14,19 +20,31 @@ class Vast:
         self.api_key = api_key.strip()
         self.session = session
         self.template_id = str(template_id).strip() if template_id else None
-        self.image = (image or 'vastai/comfyui:@vastai-automatic-tag').strip()
+        self.image = (image or 'vastai/comfy:@vastai-automatic-tag').strip()
 
     async def request(self, method, path, **kwargs):
         headers = {'Authorization': 'Bearer '+self.api_key, 'Accept': 'application/json'}
-        async with self.session.request(method, self.API+path, headers=headers, **kwargs) as response:
-            try:
-                data = await response.json(content_type=None)
-            except (ValueError, aiohttp.ContentTypeError):
-                data = {'message': (await response.text())[:1200]}
-            if response.status >= 400:
-                message = data.get('msg') or data.get('message') or data.get('error') or str(data)
-                raise VastError(f'Vast.ai HTTP {response.status}: {str(message)[:1200]}')
-            return data
+        started = time.monotonic()
+        log.debug('-> %s %s %s', method, path, kwargs.get('json') or kwargs.get('params') or '')
+        try:
+            async with self.session.request(method, self.API+path, headers=headers, **kwargs) as response:
+                try:
+                    data = await response.json(content_type=None)
+                except (ValueError, aiohttp.ContentTypeError):
+                    data = {'message': (await response.text())[:1200]}
+                status = response.status
+        except (aiohttp.ClientError, asyncio.TimeoutError) as error:
+            log.warning('<- %s %s failed in %.0f ms: %r', method, path, (time.monotonic()-started)*1000, error)
+            raise VastError(f'Vast.ai недоступен: {error!r}'[:1200])
+        elapsed = (time.monotonic()-started)*1000
+        rejected = isinstance(data, dict) and data.get('success') is False
+        if status >= 400 or rejected:
+            log.warning('<- %s %s HTTP %s in %.0f ms: %s', method, path, status, elapsed, str(data)[:2000])
+            message = data.get('msg') or data.get('message') or data.get('error') or str(data)
+            raise VastError(f'Vast.ai HTTP {status}: {str(message)[:1200]}')
+        log.info('<- %s %s HTTP %s in %.0f ms', method, path, status, elapsed)
+        log.debug('<- body %s', str(data)[:4000])
+        return data
 
     @staticmethod
     def _number(value):
@@ -82,7 +100,22 @@ class Vast:
         }
         data = await self.request('POST', '/api/v0/bundles', json=query)
         rows = data.get('offers', data if isinstance(data, list) else [])
+        log.info('offers gpu=%s max_price=%s disk=%s -> %d found', names, price, disk, len(rows))
         return [self._offer(row) for row in rows]
+
+    async def _template(self):
+        # The template carries the real image tag, ports and env; resolve Vast's current one unless pinned.
+        if self.template_id:
+            return self.template_id
+        repo = self.image.split(':', 1)[0]
+        data = await self.request('GET', '/api/v0/template/', params={
+            'select_filters': json.dumps({'recommended': {'eq': True}})})
+        for row in data.get('templates', []):
+            if row.get('image') == repo and row.get('hash_id'):
+                log.info('template resolved for %s: %s (%s:%s)', repo, row['hash_id'], row.get('name'), row.get('tag'))
+                return row['hash_id']
+        log.warning('no recommended Vast template found for image %s', repo)
+        return None
 
     async def _owned(self, instance_id):
         try:
@@ -97,10 +130,12 @@ class Vast:
         if state not in ('running', 'stopped'):
             raise ValueError('Разрешены только running и stopped')
         instance_id = await self._owned(instance_id)
+        log.info('set_state instance=%s state=%s', instance_id, state)
         return await self.request('PUT', f'/api/v0/instances/{instance_id}/', json={'state': state})
 
     async def destroy(self, instance_id):
         instance_id = await self._owned(instance_id)
+        log.info('destroy instance=%s', instance_id)
         return await self.request('DELETE', f'/api/v0/instances/{instance_id}/')
 
     async def rent(self, offer_id, disk):
@@ -110,7 +145,15 @@ class Vast:
             raise ValueError('Некорректный ID предложения или размер диска')
         if not 50 <= disk <= 2000:
             raise ValueError('Диск должен быть от 50 до 2000 ГБ')
-        body = {'disk': disk, 'image': self.image, 'onstart': ''}
-        if self.template_id:
-            body['template_id'] = self.template_id
-        return await self.request('PUT', f'/api/v0/asks/{offer_id}/', json=body)
+        body = {'disk': disk, 'cancel_unavail': True}
+        template = await self._template()
+        if template:
+            body['template_hash_id'] = template
+        elif '@' in self.image:
+            raise VastError('Не найден шаблон Vast для образа '+self.image+'. Укажите VAST_TEMPLATE_ID.')
+        else:
+            body.update(image=self.image, onstart='')
+        log.info('rent offer=%s body=%s', offer_id, body)
+        result = await self.request('PUT', f'/api/v0/asks/{offer_id}/', json=body)
+        log.info('rent offer=%s result=%s', offer_id, str(result)[:1200])
+        return result

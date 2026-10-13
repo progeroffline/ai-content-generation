@@ -13,6 +13,7 @@ from PIL import Image
 
 from studio.server import create_app, STATE
 from studio.store import Store
+from studio.vast import Vast, VastError
 from studio.workflows import validate, build_graph
 
 PASSWORD = 'test-password-never-deploy'
@@ -114,6 +115,35 @@ class FakeVast:
     async def destroy(self, instance_id):
         self.actions.append(('destroy', int(instance_id)))
         return {'success': True}
+
+
+class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
+    class RecordedVast(Vast):
+        templates = [{'image': 'other/image', 'hash_id': 'wrong'}, {'image': 'vastai/comfy', 'hash_id': 'auto-hash'}]
+
+        async def request(self, method, path, **kwargs):
+            if method == 'GET':
+                return {'templates': self.templates}
+            self.sent = method, path, kwargs['json']
+            return {'new_contract': 84}
+
+    async def test_rent_uses_pinned_template_and_cancels_unavailable_offer(self):
+        vast = self.RecordedVast('test-key', None, template_id='template-hash')
+        await vast.rent(99, 200)
+        self.assertEqual(vast.sent, ('PUT', '/api/v0/asks/99/', {
+            'disk': 200, 'cancel_unavail': True, 'template_hash_id': 'template-hash'}))
+
+    async def test_rent_resolves_recommended_template_for_image(self):
+        vast = self.RecordedVast('test-key', None)
+        await vast.rent(99, 200)
+        self.assertEqual(vast.sent[2]['template_hash_id'], 'auto-hash')
+        self.assertNotIn('image', vast.sent[2])
+
+    async def test_rent_refuses_placeholder_tag_without_template(self):
+        vast = self.RecordedVast('test-key', None)
+        vast.templates = []
+        with self.assertRaises(VastError):
+            await vast.rent(99, 200)
 
 
 class AppTests(unittest.IsolatedAsyncioTestCase):

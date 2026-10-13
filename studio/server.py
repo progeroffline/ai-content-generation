@@ -4,6 +4,7 @@ import binascii
 import hmac
 import fcntl
 import io
+import logging
 import os
 import time
 import uuid
@@ -14,6 +15,7 @@ from aiohttp import web
 from PIL import Image, UnidentifiedImageError
 
 from .comfy import Comfy, worker
+from .logs import context_id, setup as setup_logging
 from .store import Store
 from .vast import Vast, VastError
 from .workflows import validate
@@ -21,6 +23,30 @@ from .workflows import validate
 STATIC = Path(__file__).parent/'static'
 Image.MAX_IMAGE_PIXELS = 20_000_000
 STATE = web.AppKey('state', dict)
+log = logging.getLogger('studio.http')
+
+
+@web.middleware
+async def access(request, handler):
+    context_id.set(uuid.uuid4().hex[:8])
+    started = time.monotonic()
+    status = 499
+    log.debug('-> %s %s from %s', request.method, request.path_qs, request.remote)
+    try:
+        response = await handler(request)
+        status = response.status
+        return response
+    except web.HTTPException as error:
+        status = error.status
+        raise
+    except Exception:
+        status = 500
+        log.exception('%s %s crashed', request.method, request.path)
+        raise
+    finally:
+        quiet = request.method in ('GET', 'HEAD') and status < 400
+        log.log(logging.DEBUG if quiet else logging.INFO, '<- %s %s %s in %.0f ms',
+                request.method, request.path, status, (time.monotonic()-started)*1000)
 
 
 @web.middleware
@@ -40,6 +66,7 @@ async def security(request, handler):
     try:
         response = await handler(request)
     except ValueError as e:
+        log.warning('%s %s rejected: %s', request.method, request.path, e)
         response = web.json_response({'error':str(e)}, status=400)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Cache-Control'] = 'no-store'
@@ -209,7 +236,7 @@ def create_app(root, comfy_url, password, start_worker=True, vast_api_key=None,
                vast_template_id=None, vast_image=None, comfy_authorization=None):
     if len(password) < 16:
         raise ValueError('STUDIO_PASSWORD должен содержать не менее 16 символов')
-    app = web.Application(middlewares=[security], client_max_size=20*1024*1024)
+    app = web.Application(middlewares=[access, security], client_max_size=20*1024*1024)
     app[STATE] = {'store':Store(root),'password':password}
 
     async def lifecycle(app):
@@ -225,6 +252,8 @@ def create_app(root, comfy_url, password, start_worker=True, vast_api_key=None,
                    aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45)) as vast_session:
             s['comfy'] = Comfy(comfy_url,session,s['store'],comfy_authorization)
             s['vast'] = Vast(vast_api_key,vast_session,vast_template_id,vast_image) if vast_api_key else None
+            log.info('started comfy=%s vast=%s template=%s image=%s', comfy_url, bool(s['vast']),
+                     vast_template_id or 'auto', s['vast'].image if s['vast'] else None)
             task = asyncio.create_task(worker(s['store'],s['comfy'])) if start_worker else None
             try:
                 yield
@@ -246,6 +275,7 @@ def create_app(root, comfy_url, password, start_worker=True, vast_api_key=None,
 
 
 if __name__ == '__main__':
+    setup_logging()
     app = create_app(os.getenv('STUDIO_DATA','./data'),os.getenv('COMFY_URL','http://127.0.0.1:8188'),
         os.getenv('STUDIO_PASSWORD',''),vast_api_key=os.getenv('VAST_API_KEY'),
         vast_template_id=os.getenv('VAST_TEMPLATE_ID'),vast_image=os.getenv('VAST_IMAGE'),

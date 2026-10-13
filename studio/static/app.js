@@ -83,7 +83,24 @@ function serverCard(item, offer=false){
   const actions=el('div','server-actions');
   if(offer){
     const rent=el('button','primary compact','Арендовать');
-    rent.onclick=async()=>{const confirmation=window.prompt(`Будет создан платный сервер ${money(item.dph_total)}. Для подтверждения введите RENT ${item.id}`);if(confirmation!==`RENT ${item.id}`)return;rent.disabled=true;try{await api('/api/vast/rent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offer_id:item.id,disk:Number($('disk').value),confirm:confirmation})});$('vast-message').textContent='Сервер заказан. Обновляем список…';await loadInstances();}catch(e){$('vast-message').textContent=e.message;}finally{rent.disabled=false;}};actions.append(rent);
+    rent.onclick=async()=>{
+      card.querySelector('[role="alert"]')?.remove();
+      const confirmation=window.prompt(`Будет создан платный сервер ${money(item.dph_total)}. Для подтверждения введите RENT ${item.id}`);
+      if(confirmation===null)return;
+      if(confirmation!==`RENT ${item.id}`){const notice=el('p','notice','Подтверждение не совпало. Аренда не запущена.');notice.setAttribute('role','alert');card.append(notice);return;}
+      rent.disabled=true;
+      let unavailable=false;
+      try{
+        await api('/api/vast/rent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({offer_id:item.id,disk:Number($('disk').value),confirm:confirmation})});
+        $('vast-message').textContent='Сервер заказан. Обновляем список…';
+        await loadInstances();
+      }catch(e){
+        unavailable=/no_such_ask|not available/i.test(e.message);
+        const message=unavailable?'Предложение уже недоступно. Нажмите «Найти предложения» ещё раз и выберите другое.':e.message;
+        $('vast-message').textContent=message;
+        const notice=el('p','notice',message);notice.setAttribute('role','alert');card.append(notice);
+      }finally{rent.disabled=unavailable;}
+    };actions.append(rent);
   }else{
     const running=(item.actual_status||item.intended_status)==='running';
     const state=el('button','secondary',running?'Остановить':'Запустить');

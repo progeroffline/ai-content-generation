@@ -1,13 +1,17 @@
 import asyncio
 import hashlib
 import json
+import logging
 import mimetypes
 import time
 from pathlib import PurePosixPath
 
 import aiohttp
 
+from .logs import context_id
 from .workflows import build_graph
+
+log = logging.getLogger('studio.comfy')
 
 
 class GenerationError(Exception):
@@ -26,7 +30,9 @@ class Comfy:
         async with self.session.request(method, self.url+path, headers=headers, **kwargs) as r:
             if r.status >= 400:
                 body = await r.text()
+                log.warning('<- %s %s HTTP %s: %s', method, path, r.status, body[:2000])
                 raise GenerationError(f'ComfyUI HTTP {r.status}: {body[:1200]}')
+            log.debug('<- %s %s HTTP %s', method, path, r.status)
             return await r.json()
 
     async def ready(self, graph):
@@ -64,6 +70,7 @@ class Comfy:
         if not r.get('prompt_id') or r.get('error'):
             raise GenerationError('ComfyUI отклонил workflow: '+str(r)[:1200])
         self.store.update(job['id'], prompt_id=r['prompt_id'], status='running', stage='Ожидание ComfyUI')
+        log.info('submitted prompt_id=%s nodes=%d', r['prompt_id'], len(graph))
         return r['prompt_id']
 
     async def events(self, job, ws):
@@ -83,6 +90,7 @@ class Comfy:
             elif kind == 'executing' and data.get('node'):
                 self.store.update(job['id'], progress=None, stage='Обработка • узел '+str(data['node']))
             elif kind in ('execution_error', 'execution_interrupted'):
+                log.warning('%s: %s', kind, str(data)[:2000])
                 self.store.update(job['id'], status='failed', progress=None, stage='Ошибка генерации',
                                   error=str(data.get('exception_message', 'Генерация прервана'))[:1200])
 
@@ -126,6 +134,7 @@ class Comfy:
         if not found:
             raise GenerationError('Workflow завершён без поддерживаемых файлов результата')
         self.store.update(job['id'], status='completed', stage='Готово', progress=100, error=None)
+        log.info('completed files=%d', found)
         return True
 
     async def run(self, job):
@@ -171,10 +180,14 @@ async def worker(store, comfy):
             store.update(job['id'], status='failed', stage='Нужно проверить ComfyUI',
                          error='Ответ на отправку потерян. Автоповтор отключён, чтобы не запустить генерацию дважды.')
             continue
+        context_id.set(job['id'][:8])
+        log.info('job %s picked status=%s params=%s', job['id'], job['status'], job['params'])
         try:
             await comfy.run(job)
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            log.warning('no connection to ComfyUI %s: %r', comfy.url, e)
             store.update(job['id'], stage='Нет связи с ComfyUI • переподключение', progress=None)
             await asyncio.sleep(5)
         except (GenerationError, ValueError, KeyError, OSError) as e:
+            log.exception('job failed')
             store.update(job['id'], status='failed', stage='Ошибка', progress=None, error=str(e)[:1200])

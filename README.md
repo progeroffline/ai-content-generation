@@ -143,12 +143,15 @@ Caddy автоматически получает TLS-сертификат. Не
 туннель (например, WireGuard/Tailscale); альтернативно задайте защищённый внешний
 URL и `COMFY_AUTHORIZATION`.
 
-GitHub Actions `CI` запускает тесты на каждый push/PR. Ручной workflow
-`Deploy control panel` обновляет VPS. В GitHub → Settings → Secrets and variables →
-Actions добавьте `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_SSH_KEY` и
-`DEPLOY_KNOWN_HOSTS`, затем создайте repository variable `ENABLE_DEPLOY=true`.
-После этого успешный CI в `main` автоматически обновляет VPS; workflow также можно
-запустить вручную. Файл `.env` создаётся на VPS один раз и не перезаписывается.
+GitHub Actions `CI` запускает тесты на каждый push/PR. Workflow
+`Deploy control panel` для домашнего сервера использует отдельный self-hosted runner
+с меткой `frame-prod`. Runner сам устанавливает исходящее соединение с GitHub;
+входящий SSH и публичный порт для деплоя не нужны. После регистрации runner
+создайте repository variable `ENABLE_DEPLOY=true` в GitHub → Settings →
+Secrets and variables → Actions. Успешный CI после push в `main` обновляет
+чистую Git-копию до проверенного commit и выполняет `docker compose up -d --build`.
+Workflow можно запустить вручную. Серверный `.env` и Docker volume не перезаписываются.
+Деплой прекращается при локальных изменениях отслеживаемых файлов.
 
 ## 5. Видео после успешного изображения
 
