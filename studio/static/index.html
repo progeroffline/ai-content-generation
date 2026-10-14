@@ -1,19 +1,33 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frame — SwarmUI</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/gpu.css"></head>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frame — SwarmUI</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
-<header><a class="brand" href="/">◈ <span>FRAME<span class="brand-sub"> / SWARMUI</span></span></a></header>
-<section class="gpu-section">
-<div class="section-head"><div><p class="eyebrow">МОИ СЕРВЕРЫ</p><h2>SwarmUI на Vast.ai</h2><p class="muted">Ссылка на SwarmUI появляется, когда сервер полностью готов.</p></div><button id="vast-refresh" class="secondary">Обновить ↻</button></div>
-<p id="vast-message" class="notice">Проверяем настройку Vast.ai…</p>
-<div id="instances" class="server-list"></div>
-<div class="rent-panel">
-<h2>Новый сервер</h2>
-<form id="offer-form">
-<fieldset><legend>GPU</legend><label class="check"><input type="checkbox" name="gpu" value="RTX 3090" checked> RTX 3090</label><label class="check"><input type="checkbox" name="gpu" value="RTX 4090" checked> RTX 4090</label><label class="check"><input type="checkbox" name="gpu" value="RTX A5000" checked> RTX A5000</label><label class="check"><input type="checkbox" name="gpu" value="RTX 5090"> RTX 5090</label></fieldset>
-<div class="row"><div><label for="max-price">До $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.45"></div><div><label for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="60"></div></div>
-<button class="primary" type="submit">Найти серверы <span>↗</span></button>
-</form>
-<div id="offers" class="server-grid"></div>
-</div>
+<header class="topbar"><div class="topbar-inner">
+<a class="brand" href="/"><span class="brand-mark">◈</span> FRAME <span class="brand-sub">· SwarmUI на Vast.ai</span></a>
+<button id="refresh" class="btn" type="button">Обновить</button>
+</div></header>
+<main>
+<section aria-labelledby="servers-title">
+<div class="section-head"><div><h1 id="servers-title">Мои серверы</h1><p class="lead">Ссылка на SwarmUI появляется, когда сервер полностью готов.</p></div></div>
+<p id="message" class="message" role="status">Загружаем серверы…</p>
+<div id="instances" class="list"></div>
 </section>
+<section aria-labelledby="new-title">
+<div class="section-head"><div><h2 id="new-title">Новый сервер</h2><p class="lead">Сервер сам установит SwarmUI и модели — это 10–15 минут после аренды.</p></div></div>
+<form id="offer-form" class="card filters">
+<div><span class="field-label" id="gpu-label">Видеокарта</span>
+<fieldset class="chips" aria-labelledby="gpu-label">
+<label class="chip"><input type="checkbox" name="gpu" value="RTX 3090" checked><span>RTX 3090</span></label>
+<label class="chip"><input type="checkbox" name="gpu" value="RTX 4090" checked><span>RTX 4090</span></label>
+<label class="chip"><input type="checkbox" name="gpu" value="RTX A5000" checked><span>RTX A5000</span></label>
+<label class="chip"><input type="checkbox" name="gpu" value="RTX 5090"><span>RTX 5090</span></label>
+</fieldset></div>
+<div class="inline-fields">
+<div><label class="field-label" for="max-price">Цена до, $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.45" required></div>
+<div><label class="field-label" for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="60" required></div>
+<div><button class="btn btn-primary" type="submit" id="search">Найти серверы</button></div>
+</div>
+</form>
+<div id="offers" class="list offers" aria-live="polite"></div>
+</section>
+</main>
 <script src="/static/app.js" defer></script></body></html>

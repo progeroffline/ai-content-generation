@@ -73,7 +73,7 @@ async def index(request):
 
 async def asset(request):
     name = request.match_info['name']
-    if name not in ('app.js','style.css','gpu.css'):
+    if name not in ('app.js','style.css'):
         raise web.HTTPNotFound()
     return web.FileResponse(STATIC/name)
 
