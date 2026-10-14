@@ -15,15 +15,18 @@ cd "$SWARM" || { log "SwarmUI not found in $SWARM"; exit 1; }
 printf '#!/bin/bash\nrm -f /.provisioning_complete\n' > /etc/vast_boot.d/70-studio-reprovision.sh
 chmod +x /etc/vast_boot.d/70-studio-reprovision.sh
 . /venv/main/bin/activate
+# The image's torch matches the host driver; keep every pip install from swapping it for a multi-GB build.
+pip freeze 2>/dev/null | grep -iE '^(torch|torchvision|torchaudio)==' > /tmp/torch-pin.txt
 
-# $1: "swarm" for SwarmUI model folders, "comfy" for comfy/<subfolder> and workflows (need the backend installed).
+# Models go in one at a time after the software: next to 16 aria2c connections pip and git starve
+# (a 3-minute backend install took 13), and one file at a time already fills the host's link.
 download_models(){
-    curl -fsSL "$RAW/scripts/vast/models.txt" -o "/tmp/models-$1.txt" || { log "models.txt unavailable"; return; }
-    grep -vE '^\s*(#|$)' "/tmp/models-$1.txt" | while read -r folder url name; do
+    curl -fsSL "$RAW/scripts/vast/models.txt" -o /tmp/models.txt || { log "models.txt unavailable"; return; }
+    grep -vE '^\s*(#|$)' /tmp/models.txt | while read -r folder url name; do
         case "$folder" in
-            comfy/*) [ "$1" = comfy ] || continue; dir="dlbackend/ComfyUI/models/${folder#comfy/}";;
-            workflows) [ "$1" = comfy ] || continue; dir="dlbackend/ComfyUI/user/default/workflows";;
-            *) [ "$1" = swarm ] || continue; dir="Models/$folder";;
+            comfy/*) dir="dlbackend/ComfyUI/models/${folder#comfy/}";;
+            workflows) dir="dlbackend/ComfyUI/user/default/workflows";;
+            *) dir="Models/$folder";;
         esac
         dest="$dir/$name"
         [ -s "$dest" ] && { log "present: $dest"; continue; }
@@ -36,28 +39,32 @@ download_models(){
             auth=(--config /tmp/civitai.curl);;
         esac
         log "downloading $dest"
+        start=$SECONDS
         # Civitai redirects to a signed storage URL; resolving it here keeps the token away from aria2c
         # (curl, unlike wget, does not forward the header to the storage host either).
         [ ${#auth[@]} -gt 0 ] && signed=$(curl -fsS "${auth[@]}" -o /dev/null -w '%{redirect_url}' "$url") && [ -n "$signed" ] &&
             { url=$signed; auth=(); }
-        # Storage hosts cap a single connection (Civitai at ~15 MB/s); aria2c pulls one file over 16.
+        # Storage hosts cap a single connection (Civitai at ~15 MB/s), so large files go over up to 16;
+        # -k 64M opens one connection per 64 MB, so small files stay on a single one.
         if [ ${#auth[@]} -eq 0 ] && command -v aria2c >/dev/null; then
-            aria2c -q -x 16 -s 16 -k 1M --file-allocation=none --allow-overwrite=true -d "$dir" -o "$name.part" "$url"
+            aria2c -q -x 16 -s 16 -k 64M --max-tries=5 --retry-wait=5 --file-allocation=none --allow-overwrite=true \
+                -d "$dir" -o "$name.part" "$url"
         else
             curl -fsSL "${auth[@]}" -o "$dest.part" "$url"
-        fi && [ -s "$dest.part" ] && { mv "$dest.part" "$dest"; log "done: $dest"; continue; }
+        fi && [ -s "$dest.part" ] && { mv "$dest.part" "$dest"; log "done: $dest ($(du -h "$dest" | cut -f1) in $((SECONDS - start))s)"; continue; }
         rm -f "$dest.part" "$dest.part.aria2"; log "FAILED: $dest"
     done
 }
 
 command -v aria2c >/dev/null || apt-get install -y -qq aria2 >/dev/null 2>&1 ||
     { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq aria2 >/dev/null 2>&1; } || log "aria2 install FAILED, downloads use curl"
-download_models swarm &
 
 # The image ships SwarmUI 0.9.8-Beta, which forces ComfyUI frontend 1.37 onto current ComfyUI and
 # breaks the workflows. The latest SwarmUI needs .NET 10 and NuGet, which some hosts cannot reach, so
 # it is built here: on failure the checkout goes back to the build in place, and SwarmUI starts at once
 # instead of retrying a doomed build on every launch.
+# Runs next to the backend install (it is mostly CPU), finished by the wait before Data/Backends.fds.
+update_swarm(){
 log "updating SwarmUI"
 [ -f src/bin/studio_image_commit ] || git rev-parse HEAD > src/bin/studio_image_commit
 target=$(git fetch -q origin && git rev-parse origin/master) || log "SwarmUI fetch FAILED"
@@ -88,13 +95,19 @@ fi
 built=$(cat src/bin/studio_build 2>/dev/null || cat src/bin/studio_image_commit)
 git checkout -q -B master "$built" || log "SwarmUI checkout FAILED"
 echo "$built" > src/bin/last_build
+}
+update_swarm &
 
 if [ ! -f dlbackend/ComfyUI/main.py ]; then
     log "installing ComfyUI backend"
-    SWARM_NO_VENV=1 bash launchtools/comfy-install-linux.sh nv || log "backend install FAILED"
+    if [ -s /tmp/torch-pin.txt ]; then
+        # SwarmUI's installer would download a cu130 torch (several GB, and it needs a newer driver).
+        mkdir -p dlbackend && git clone -q https://github.com/comfyanonymous/ComfyUI dlbackend/ComfyUI || log "backend clone FAILED"
+    else
+        SWARM_NO_VENV=1 bash launchtools/comfy-install-linux.sh nv || log "backend install FAILED"
+    fi
 fi
-# The install script does not stop on a partly failed requirements install; finish it.
-pip install -q -r dlbackend/ComfyUI/requirements.txt || log "backend requirements FAILED"
+pip install -q -c /tmp/torch-pin.txt -r dlbackend/ComfyUI/requirements.txt || log "backend requirements FAILED"
 python -c "import torchsde" || log "backend requirements still incomplete"
 
 log "installing node packs"
@@ -103,11 +116,11 @@ curl -fsSL "$RAW/scripts/vast/custom_nodes.txt" | grep -vE '^\s*(#|$)' | while r
     [ -d "$dir" ] && { log "node pack present: $(basename "$repo")"; continue; }
     git clone -q --depth 1 "$repo" "$dir" || { log "node pack FAILED: $repo"; continue; }
     # Only on a fresh clone: Impact-Pack's sam2 build pulls a whole new torch, which a restart must not redo.
-    [ -f "$dir/requirements.txt" ] && { pip install -q -r "$dir/requirements.txt" || log "node pack requirements FAILED: $repo"; }
+    [ -f "$dir/requirements.txt" ] && { pip install -q -c /tmp/torch-pin.txt -r "$dir/requirements.txt" || log "node pack requirements FAILED: $repo"; }
     log "node pack ready: $(basename "$repo")"
 done
-log "installing workflows"
-download_models comfy
+log "installing models"
+download_models
 # The author's workflow loads the int8_convrot variant; servers get Turbo fp16 (his pick for 24 GB cards).
 sed -i 's/lustify-v10-krea-turbo-int8_convrot\.safetensors/lustify-v10-krea-turbo-fp16.safetensors/' \
     dlbackend/ComfyUI/user/default/workflows/lustify-krea2.json 2>/dev/null
@@ -127,6 +140,7 @@ mkdir -p dlbackend/ComfyUI/custom_nodes/comfy-studio/web
 for file in __init__.py web/default_workflow.js; do
     curl -fsSL "$RAW/scripts/vast/comfy-studio/$file" -o "dlbackend/ComfyUI/custom_nodes/comfy-studio/$file" || log "comfy-studio FAILED: $file"
 done
+wait
 mkdir -p Data
 [ -f Data/Backends.fds ] || printf '0:\n\ttype: comfyui_selfstart\n\ttitle: ComfyUI\n\tenabled: true\n\tsettings:\n\t\tStartScript: dlbackend/ComfyUI/main.py\n\t\tAutoUpdate: false\n' > Data/Backends.fds
 # The image's SwarmUI would pin ComfyUI's frontend to 1.37; keep the one ComfyUI itself requires then.
@@ -143,5 +157,4 @@ fi
 # Keep model metadata in a JSON next to the model: rewriting a 25 GB model needs as much free disk again.
 sed -i -E 's/^(\s*)EditMetadataWriteJSON: false/\1EditMetadataWriteJSON: true/; s/^(\s*)ImageMetadataIncludeModelHash: true/\1ImageMetadataIncludeModelHash: false/' Data/Settings.fds
 
-wait
 log "provisioning finished"
