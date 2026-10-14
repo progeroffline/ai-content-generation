@@ -18,10 +18,11 @@ download_models(){
         auth=()
         case "$url" in *civitai.com*)
             [ -n "${CIVITAI_TOKEN:-}" ] || { log "skip $name: CIVITAI_TOKEN is not set"; continue; }
-            auth=(--header "Authorization: Bearer $CIVITAI_TOKEN");;
+            auth=(-H "Authorization: Bearer $CIVITAI_TOKEN");;
         esac
         log "downloading $dest"
-        if wget -q "${auth[@]}" -O "$dest.part" "$url" && [ -s "$dest.part" ]; then
+        # curl, unlike wget, does not forward the Civitai header to the storage host it redirects to.
+        if curl -fsSL "${auth[@]}" -o "$dest.part" "$url" && [ -s "$dest.part" ]; then
             mv "$dest.part" "$dest"; log "done: $dest"
         else
             rm -f "$dest.part"; log "FAILED: $dest"
