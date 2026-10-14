@@ -32,10 +32,22 @@ download_models(){
 
 download_models &
 
+# The image pins an old SwarmUI that misses newer model families (e.g. Krea 2); the latest needs .NET 10.
+# SwarmUI rebuilds itself on start when the checkout changes.
+log "updating SwarmUI"
+git fetch -q origin && git checkout -q -B master origin/master || log "SwarmUI update FAILED"
+if ! dotnet --list-sdks | grep -q '^10\.'; then
+    curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh &&
+        bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "${DOTNET_ROOT:-/opt/dotnet}" >/dev/null || log ".NET 10 install FAILED"
+fi
+
 if [ ! -f dlbackend/ComfyUI/main.py ]; then
     log "installing ComfyUI backend"
     SWARM_NO_VENV=1 bash launchtools/comfy-install-linux.sh nv || log "backend install FAILED"
 fi
+# The install script does not stop on a partly failed requirements install; finish it.
+pip install -q -r dlbackend/ComfyUI/requirements.txt || log "backend requirements FAILED"
+python -c "import torchsde" || log "backend requirements still incomplete"
 mkdir -p Data
 [ -f Data/Backends.fds ] || printf '0:\n\ttype: comfyui_selfstart\n\ttitle: ComfyUI\n\tenabled: true\n\tsettings:\n\t\tStartScript: dlbackend/ComfyUI/main.py\n\t\tAutoUpdate: false\n' > Data/Backends.fds
 if [ -f Data/Settings.fds ]; then
