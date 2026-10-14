@@ -9,18 +9,12 @@ import aiohttp
 
 log = logging.getLogger('studio.vast')
 ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
-# Milestones of a SwarmUI server coming up, in log order: (pattern, stage shown to the user).
+# Milestones of a ComfyUI server coming up, in log order: (pattern, stage shown to the user).
 STAGES = [
-    (re.compile(r'studio-provision\].*updating SwarmUI'), 'Автонастройка: обновление SwarmUI'),
-    (re.compile(r'studio-provision\].*installing ComfyUI backend'), 'Автонастройка: установка движка'),
-    (re.compile(r'studio-provision\].*downloading (\S+)'), 'Автонастройка: загрузка модели'),
-    (re.compile(r'studio-provision\].*installing node packs'), 'Автонастройка: установка узлов ComfyUI'),
-    (re.compile(r'studio-provision\].*provisioning finished'), 'Автонастройка завершена'),
-    (re.compile(r'Rebuilding|Build succeeded'), 'Сборка SwarmUI'),
-    (re.compile(r'SwarmUI v[\d.]+ .* is now running'), 'SwarmUI запущен, загружается движок'),
-    (re.compile(r'Self-Start ComfyUI-\d+ on port \d+ started'), 'Движок запущен'),
+    (re.compile(r'ComfyUI version: '), 'Движок загружается'),
+    (re.compile(r'To see the GUI go to'), 'Движок запущен'),
 ]
-SECRET = re.compile(r"('[^']*(?:token|api_key|password)[^']*': )'[^']*'")
+SECRET = re.compile(r"('[^']*(?:token|api_key|password|login)[^']*': )'[^']*'")
 
 
 class VastError(Exception):
@@ -33,11 +27,13 @@ class Vast:
     MAX_DOWN_COST = 0.02  # $/GB
     API = 'https://console.vast.ai'
 
-    def __init__(self, api_key, session, template_id=None, image=None):
+    def __init__(self, api_key, session, template_id=None, image=None, image_login=None):
         self.api_key = api_key.strip()
         self.session = session
         self.template_id = str(template_id).strip() if template_id else None
         self.image = (image or 'vastai/comfy:@vastai-automatic-tag').strip()
+        # "-u USER -p TOKEN docker.io" for a private image; Vast templates cannot store it.
+        self.image_login = image_login
         self.recommended = None
         self.log_cache = {}
         self.reached = {}
@@ -45,7 +41,7 @@ class Vast:
     async def request(self, method, path, **kwargs):
         headers = {'Authorization': 'Bearer '+self.api_key, 'Accept': 'application/json'}
         started = time.monotonic()
-        log.debug('-> %s %s %s', method, path, kwargs.get('json') or kwargs.get('params') or '')
+        log.debug('-> %s %s %s', method, path, SECRET.sub(r"\1'***'", str(kwargs.get('json') or kwargs.get('params') or '')))
         try:
             async with self.session.request(method, self.API+path, headers=headers, **kwargs) as response:
                 try:
@@ -85,15 +81,14 @@ class Vast:
             'id', 'actual_status', 'intended_status', 'label', 'gpu_name', 'num_gpus',
             'gpu_ram', 'cpu_ram', 'cpu_cores_effective', 'disk_space', 'dph_total',
             'reliability2', 'public_ipaddr', 'ssh_host', 'ssh_port', 'start_date',
-            'geolocation', 'machine_id')} | {'swarm_url': cls._swarm_url(item)}
+            'geolocation', 'machine_id')} | {'comfy_url': cls._comfy_url(item)}
 
     @staticmethod
-    def _swarm_url(item):
-        # SwarmUI of the template is published on 7865 behind the instance token (Caddy);
-        # the hash opens its Comfy Workflow tab, where the studio workflows live.
-        mapped = (item.get('ports') or {}).get('7865/tcp')
+    def _comfy_url(item):
+        # ComfyUI of the template is published on 8188 behind the instance token (Caddy).
+        mapped = (item.get('ports') or {}).get('8188/tcp')
         if item.get('actual_status') == 'running' and mapped and item.get('public_ipaddr') and item.get('jupyter_token'):
-            return f"http://{item['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/?token={item['jupyter_token']}#,comfyworkflow"
+            return f"http://{item['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/?token={item['jupyter_token']}"
         return None
 
     @classmethod
@@ -131,8 +126,10 @@ class Vast:
             'reliability2': {'gte': 0.97}, 'disk_space': {'gte': disk},
             # LUSTIFY fp16 and Wan 2.2's two 14B halves are partly held in RAM while they run.
             'cpu_ram': {'gte': self.MIN_RAM_GB*1024},
-            # ~75 GB of models come down on every new server.
+            # The ~90 GB image with the models comes down on every new host.
             'inet_down': {'gte': self.MIN_DOWN_MBPS}, 'inet_down_cost': {'lte': self.MAX_DOWN_COST},
+            # The studio image is built on vastai/comfy's CUDA 12.9 variant.
+            'cuda_max_good': {'gte': 12.9},
             # Hugging Face and Civitai downloads are unreliable from there.
             'geolocation': {'notin': ['CN']},
         }
@@ -189,22 +186,18 @@ class Vast:
         self.log_cache[instance_id] = time.monotonic(), lines
         return lines
 
-    async def _swarm_ready(self, row):
-        # Ask SwarmUI itself (through the instance's token proxy) whether its backend is up.
-        mapped = (row.get('ports') or {}).get('7865/tcp')
+    async def _comfy_ready(self, row):
+        # Ask ComfyUI itself (through the instance's token proxy) whether it is serving.
+        mapped = (row.get('ports') or {}).get('8188/tcp')
         if not (mapped and row.get('public_ipaddr') and row.get('jupyter_token')):
             return False
-        base = f"http://{row['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/API/"
+        url = f"http://{row['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/system_stats"
         headers = {'Authorization': 'Bearer '+row['jupyter_token']}
         try:
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with self.session.post(base+'GetNewSession', json={}, headers=headers, timeout=timeout) as r:
-                session_id = (await r.json(content_type=None)).get('session_id')
-            async with self.session.post(base+'ListBackends', json={'session_id': session_id}, headers=headers, timeout=timeout) as r:
-                backends = await r.json(content_type=None)
-            return any(b.get('status') == 'running' for b in backends.values() if isinstance(b, dict))
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, AttributeError) as error:
-            log.debug('SwarmUI of %s not answering: %r', row.get('id'), error)
+            async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                return r.status == 200 and 'system' in await r.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError) as error:
+            log.debug('ComfyUI of %s not answering: %r', row.get('id'), error)
             return False
 
     @staticmethod
@@ -237,9 +230,9 @@ class Vast:
             raise ValueError('Инстанс не найден среди ваших серверов')
         if not row:
             return {'id': instance_id, 'status': None, 'status_msg': '', 'stage': 'Сервер создаётся', 'ready': False,
-                    'swarm_url': None, 'logs': []}
+                    'comfy_url': None, 'logs': []}
         lines = await self._container_logs(instance_id) if row.get('actual_status') else []
-        ready = row.get('actual_status') == 'running' and await self._swarm_ready(row)
+        ready = row.get('actual_status') == 'running' and await self._comfy_ready(row)
         stage = 'Готов к генерации' if ready else self._stage(row, lines)
         if row.get('actual_status') == 'running':
             # Never step back: a marker can still drop out of the log tail.
@@ -252,7 +245,7 @@ class Vast:
         else:
             self.reached.pop(instance_id, None)
         return {'id': instance_id, 'status': row.get('actual_status'), 'status_msg': (row.get('status_msg') or '')[-600:],
-                'stage': stage, 'ready': ready, 'swarm_url': self._swarm_url(row) if ready else None, 'logs': lines[-400:]}
+                'stage': stage, 'ready': ready, 'comfy_url': self._comfy_url(row) if ready else None, 'logs': lines[-400:]}
 
     @staticmethod
     def _rank(stage):
@@ -298,6 +291,8 @@ class Vast:
         else:
             body.update(image=self.image, onstart='')
         log.info('rent offer=%s body=%s', offer_id, body)
+        if self.image_login:
+            body['image_login'] = self.image_login
         result = await self.request('PUT', f'/api/v0/asks/{offer_id}/', json=body)
         log.info('rent offer=%s new_contract=%s', offer_id, result.get('new_contract'))
         return result

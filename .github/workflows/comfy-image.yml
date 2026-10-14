@@ -1,0 +1,61 @@
+name: ComfyUI image
+
+# Builds the private image that Vast servers run: docker.io/<DOCKERHUB_USER>/frame-comfy:latest.
+# The models image (BASE + one layer per model) is rebuilt only when models.txt or BASE change;
+# the software image is built on every run and rebased onto it, without moving the models.
+on:
+  push:
+    branches: [main]
+    paths: [scripts/vast/**, .github/workflows/comfy-image.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comfy-image
+  cancel-in-progress: false
+
+env:
+  BASE: vastai/comfy:v0.40.0-cuda-12.9-py312
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imjasonh/setup-crane@v0.4
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          echo "$DOCKERHUB_TOKEN" | crane auth login index.docker.io -u "$DOCKERHUB_USER" --password-stdin
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
+          echo "REPO=docker.io/$DOCKERHUB_USER/frame-comfy" >> "$GITHUB_ENV"
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+          sudo apt-get install -y -qq aria2 >/dev/null
+          sudo mkdir -p /mnt/dl && sudo chown "$USER" /mnt/dl && mkdir -p "$HOME/tars"
+          df -h / /mnt
+      - name: Models image
+        env:
+          CIVITAI_TOKEN: ${{ secrets.CIVITAI_TOKEN }}
+        run: |
+          models="$REPO:models-$( (echo "$BASE"; cat scripts/vast/models.txt) | sha256sum | cut -c1-12)"
+          echo "MODELS=$models" >> "$GITHUB_ENV"
+          if crane digest "$models" >/dev/null 2>&1; then echo "present: $models"; exit 0; fi
+          scripts/vast/build_image.sh models "$BASE" "$models" /mnt/dl "$HOME/tars"
+      - name: Software image
+        env:
+          CIVITAI_TOKEN: ${{ secrets.CIVITAI_TOKEN }}
+        run: |
+          scripts/vast/build_image.sh workflows
+          docker build --build-arg BASE="$BASE" -t "$REPO:software-$GITHUB_SHA" scripts/vast
+          docker push -q "$REPO:software-$GITHUB_SHA"
+      - name: Rebase onto the models
+        run: |
+          crane rebase "$REPO:software-$GITHUB_SHA" --old_base "$BASE" --new_base "$MODELS" --tag "$REPO:$GITHUB_SHA"
+          crane tag "$REPO:$GITHUB_SHA" latest

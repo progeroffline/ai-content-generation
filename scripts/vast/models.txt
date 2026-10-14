@@ -1,7 +1,6 @@
-# Files downloaded on every new Vast server: <folder> <url> <file name>
-# <folder> is a SwarmUI Models subfolder, comfy/<subfolder> for ComfyUI's own models directory,
-# or workflows for ComfyUI's workflow list.
-# Civitai links need CIVITAI_TOKEN in the template (see scripts/vast/create_template.py).
+# Files baked into the studio image (.github/workflows/comfy-image.yml): <folder> <url> <file name>
+# <folder> is a ComfyUI models subfolder under /opt/model_store (see extra_model_paths.yaml),
+# or workflows for ComfyUI's workflow list. Civitai links use the CIVITAI_TOKEN repository secret.
 
 # LUSTIFY v10 (Krea 2), Turbo fp16 — the author's pick for 24 GB cards
 diffusion_models https://civitai.com/api/download/models/3112728?fileId=3015314 lustify-v10-krea-turbo-fp16.safetensors
@@ -13,16 +12,16 @@ workflows https://civitai.com/api/download/models/3123550?fileId=3007440 lustify
 
 # Used by the workflow above
 text_encoders https://huggingface.co/Comfy-Org/Qwen3-VL/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors qwen3vl_4b_fp8_scaled.safetensors
-VAE https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors wan_2.1_vae.safetensors
+vae https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors wan_2.1_vae.safetensors
 upscale_models https://huggingface.co/gemasai/4x_NMKD-Superscale-SP_178000_G/resolve/main/4x_NMKD-Superscale-SP_178000_G.pth 4x_NMKD-Superscale-SP_178000_G.pth
-comfy/sams https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth sam_vit_b_01ec64.pth
-comfy/ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt face_yolov8m.pt
-comfy/ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt hand_yolov8s.pt
+sams https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth sam_vit_b_01ec64.pth
+ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt face_yolov8m.pt
+ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt hand_yolov8s.pt
 
 # Wan 2.2 14B video, used by workflows/wan2.2-flf2v.json (first + last frame) and wan2.2-i2v.json (one image);
 # both are ComfyUI's own templates. The VAE is wan_2.1_vae above.
 diffusion_models https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
 diffusion_models https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
 text_encoders https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors umt5_xxl_fp8_e4m3fn_scaled.safetensors
-Lora https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
-Lora https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+loras https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+loras https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors

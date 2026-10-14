@@ -1,0 +1,9 @@
+studio:
+    base_path: /opt/model_store
+    diffusion_models: diffusion_models
+    text_encoders: text_encoders
+    vae: vae
+    loras: loras
+    upscale_models: upscale_models
+    sams: sams
+    ultralytics_bbox: ultralytics/bbox

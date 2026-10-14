@@ -54,11 +54,16 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(vast.sent, ('PUT', '/api/v0/asks/99/', {
             'client_id': 'me', 'disk': 200, 'template_hash_id': 'template-hash'}))
 
-    def test_instance_exposes_swarm_link_only_when_running(self):
+    async def test_rent_passes_registry_login(self):
+        vast = self.RecordedVast('test-key', None, template_id='template-hash', image_login='-u u -p p docker.io')
+        await vast.rent(99, 200)
+        self.assertEqual(vast.sent[2]['image_login'], '-u u -p p docker.io')
+
+    def test_instance_exposes_comfy_link_only_when_running(self):
         row = {'actual_status': 'running', 'public_ipaddr': '3.3.3.3 ', 'jupyter_token': 'tok',
-               'ports': {'7865/tcp': [{'HostPort': '5000'}]}}
-        self.assertEqual(Vast._instance(row)['swarm_url'], 'http://3.3.3.3:5000/?token=tok#,comfyworkflow')
-        self.assertIsNone(Vast._instance({**row, 'actual_status': 'loading'})['swarm_url'])
+               'ports': {'8188/tcp': [{'HostPort': '5000'}]}}
+        self.assertEqual(Vast._instance(row)['comfy_url'], 'http://3.3.3.3:5000/?token=tok')
+        self.assertIsNone(Vast._instance({**row, 'actual_status': 'loading'})['comfy_url'])
 
     async def test_rent_resolves_recommended_template_for_image(self):
         vast = self.RecordedVast('test-key', None)
@@ -74,20 +79,19 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
 
     def test_stage_follows_latest_milestone_in_log(self):
         running = {'actual_status': 'running', 'intended_status': 'running'}
-        log = ['[studio-provision] 08:58:55 updating SwarmUI',
-               '[studio-provision] 08:58:56 downloading Models/Stable-Diffusion/model.safetensors',
-               '[studio-provision] 09:03:54 provisioning finished',
-               'Rebuilding...']
-        self.assertEqual(Vast._stage(running, log), 'Сборка SwarmUI')
-        self.assertEqual(Vast._stage(running, log[:2]), 'Автонастройка: загрузка модели model.safetensors')
+        log = ['[INFO] ComfyUI version: 0.40.0',
+               '[INFO] Starting server',
+               '[INFO] To see the GUI go to: http://127.0.0.1:18188']
+        self.assertEqual(Vast._stage(running, log), 'Движок запущен')
+        self.assertEqual(Vast._stage(running, log[:2]), 'Движок загружается')
         self.assertEqual(Vast._stage(running, []), 'Контейнер запущен')
         self.assertEqual(Vast._stage({'actual_status': 'loading', 'status_msg': 'a\nPull complete'}, []),
                          'Загрузка образа: Pull complete')
         self.assertEqual(Vast._stage({'actual_status': 'exited', 'intended_status': 'stopped'}, log), 'Остановлен')
         self.assertEqual(Vast._stage({'actual_status': 'loading', 'status_msg': '#12 0.529 Installing IPython kernel spec'}, []),
                          'Загрузка образа: Installing IPython kernel spec')
-        self.assertLess(Vast._rank('Контейнер запущен'), Vast._rank('Автонастройка: установка движка'))
-        self.assertLess(Vast._rank('Сборка SwarmUI'), Vast._rank('Готов к генерации'))
+        self.assertLess(Vast._rank('Контейнер запущен'), Vast._rank('Движок загружается'))
+        self.assertLess(Vast._rank('Движок запущен'), Vast._rank('Готов к генерации'))
 
     async def test_progress_never_steps_back_and_cleans_log(self):
         class LogVast(Vast):
@@ -96,13 +100,13 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
                 return {'instances': {'id': 7, 'actual_status': 'running', 'intended_status': 'running'}}
             async def _container_logs(self, instance_id):
                 return self.text.split('\n')
-            async def _swarm_ready(self, row):
+            async def _comfy_ready(self, row):
                 return False
         vast = LogVast('k', None)
-        vast.text = '[studio-provision] 1 installing ComfyUI backend'
-        self.assertEqual((await vast.progress(7))['stage'], 'Автонастройка: установка движка')
+        vast.text = 'ComfyUI version: 0.40.0'
+        self.assertEqual((await vast.progress(7))['stage'], 'Движок загружается')
         vast.text = 'Downloading wheel'
-        self.assertEqual((await vast.progress(7))['stage'], 'Автонастройка: установка движка')
+        self.assertEqual((await vast.progress(7))['stage'], 'Движок загружается')
 
 
 class AppTests(unittest.IsolatedAsyncioTestCase):

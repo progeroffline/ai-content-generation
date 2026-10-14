@@ -121,7 +121,7 @@ async def vast_progress(request):
     return web.json_response(await vast_client(request).progress(request.match_info['id']))
 
 
-def create_app(password, vast_api_key=None, vast_template_id=None, vast_image=None):
+def create_app(password, vast_api_key=None, vast_template_id=None, vast_image=None, vast_image_login=None):
     if len(password) < 16:
         raise ValueError('STUDIO_PASSWORD должен содержать не менее 16 символов')
     app = web.Application(middlewares=[access, security])
@@ -130,7 +130,7 @@ def create_app(password, vast_api_key=None, vast_template_id=None, vast_image=No
     async def lifecycle(app):
         s = app[STATE]
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=45)) as session:
-            s['vast'] = Vast(vast_api_key,session,vast_template_id,vast_image) if vast_api_key else None
+            s['vast'] = Vast(vast_api_key,session,vast_template_id,vast_image,vast_image_login) if vast_api_key else None
             log.info('started vast=%s template=%s image=%s', bool(s['vast']), vast_template_id or 'auto',
                      s['vast'].image if s['vast'] else None)
             yield
@@ -147,5 +147,6 @@ def create_app(password, vast_api_key=None, vast_template_id=None, vast_image=No
 if __name__ == '__main__':
     setup_logging()
     app = create_app(os.getenv('STUDIO_PASSWORD',''),vast_api_key=os.getenv('VAST_API_KEY'),
-        vast_template_id=os.getenv('VAST_TEMPLATE_ID'),vast_image=os.getenv('VAST_IMAGE'))
+        vast_template_id=os.getenv('VAST_TEMPLATE_ID'),vast_image=os.getenv('VAST_IMAGE'),
+        vast_image_login=os.getenv('DOCKERHUB_TOKEN') and f"-u {os.getenv('DOCKERHUB_USER')} -p {os.getenv('DOCKERHUB_TOKEN')} docker.io")
     web.run_app(app,host=os.getenv('STUDIO_HOST','127.0.0.1'),port=int(os.getenv('STUDIO_PORT','8080')),access_log=None)

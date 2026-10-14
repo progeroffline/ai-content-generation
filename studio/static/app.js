@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 const watching = new Map();
-const STEPS = ['Образ', 'Настройка', 'Сборка', 'Движок', 'Готово'];
+const STEPS = ['Образ', 'Запуск', 'Движок', 'Готово'];
 
 async function api(path, options={}) {
   const response = await fetch(path, {...options, headers:{'X-Studio-Request':'1','Content-Type':'application/json',...options.headers}});
@@ -19,17 +19,16 @@ function friendly(message){return /no_such_ask|not available|no longer available
 
 // Position of a backend stage on the step bar; -1 when the server is not starting up.
 function stepOf(p){
-  if(p.ready)return 4;
+  if(p.ready)return 3;
   const s=p.stage||'';
   if(s.startsWith('Загрузка образа'))return 0;
-  if(s.startsWith('Контейнер')||s.startsWith('Автонастройка'))return 1;
-  if(s.startsWith('Сборка'))return 2;
-  if(s.startsWith('SwarmUI')||s.startsWith('Движок'))return 3;
+  if(s.startsWith('Контейнер'))return 1;
+  if(s.startsWith('Движок'))return 2;
   return -1;
 }
 function renderSteps(list, current){
   list.hidden=current<0;
-  [...list.children].forEach((li,i)=>{li.className=i<current?'done':i===current?(current===4?'done':'current'):'';});
+  [...list.children].forEach((li,i)=>{li.className=i<current?'done':i===current?(current===3?'done':'current'):'';});
 }
 
 function instanceCard(item){
@@ -70,7 +69,7 @@ function watch(id,view){
       view.status.dataset.tone=p.ready?'ready':stopped?'stopped':'progress';
       view.text.textContent=p.stage;
       renderSteps(view.steps,stopped?-1:stepOf(p));
-      view.link.hidden=!p.swarm_url;if(p.swarm_url)view.link.href=p.swarm_url;
+      view.link.hidden=!p.comfy_url;if(p.comfy_url)view.link.href=p.comfy_url;
       const atBottom=view.log.scrollTop+view.log.clientHeight>=view.log.scrollHeight-24;
       view.log.textContent=p.logs.length?p.logs.join('\n'):(p.status_msg||'Лог пока пуст — контейнер ещё не запустился.');
       if(atBottom)view.log.scrollTop=view.log.scrollHeight;

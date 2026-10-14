@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frame — SwarmUI</title><link rel="stylesheet" href="/static/style.css"></head>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Frame — ComfyUI</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
 <header class="topbar"><div class="topbar-inner">
-<a class="brand" href="/"><span class="brand-mark">◈</span> FRAME <span class="brand-sub">· SwarmUI на Vast.ai</span></a>
+<a class="brand" href="/"><span class="brand-mark">◈</span> FRAME <span class="brand-sub">· ComfyUI на Vast.ai</span></a>
 <button id="refresh" class="btn" type="button">Обновить</button>
 </div></header>
 <main>
@@ -12,7 +12,7 @@
 <div id="instances" class="list"></div>
 </section>
 <section aria-labelledby="new-title">
-<div class="section-head"><div><h2 id="new-title">Новый сервер</h2><p class="lead">Сервер сам установит SwarmUI, ComfyUI, модели и workflows — это 15–20 минут после аренды. В поиске только хосты с RAM от 60 ГБ, интернетом от 500 Мбит/с и трафиком до $0.02/ГБ.</p></div></div>
+<div class="section-head"><div><h2 id="new-title">Новый сервер</h2><p class="lead">Сервер скачивает готовый образ с ComfyUI, моделями и workflows (~90 ГБ): 10–20 минут в зависимости от канала хоста. В поиске только хосты с RAM от 60 ГБ, интернетом от 500 Мбит/с и трафиком до $0.02/ГБ.</p></div></div>
 <form id="offer-form" class="card filters">
 <div><span class="field-label" id="gpu-label">Видеокарта</span>
 <fieldset class="chips" aria-labelledby="gpu-label">
@@ -23,7 +23,7 @@
 </fieldset></div>
 <div class="inline-fields">
 <div><label class="field-label" for="max-price">Цена до, $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.8" required></div>
-<div><label class="field-label" for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="130" required></div>
+<div><label class="field-label" for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="150" required></div>
 <div><button class="btn btn-primary" type="submit" id="search">Найти серверы</button></div>
 </div>
 </form>
