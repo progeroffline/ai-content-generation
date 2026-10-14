@@ -40,7 +40,7 @@ def main():
     body = {k: base.get(k) for k in ('onstart', 'runtype', 'jup_direct', 'ssh_direct', 'use_ssh',
                                      'jupyter_dir', 'use_jupyter_lab')}
     body.update(name='Studio ComfyUI', desc='ComfyUI with the studio models and workflows', private=True,
-                image=image, tag=tag or 'latest', env=base_env, extra_filters=json.dumps(filters),
+                image=image, tag=tag or 'latest', env=base_env, extra_filters=filters,
                 recommended_disk_space=150, docker_login_repo='docker.io')
     created = call(key, 'POST', API, body)
     template = created.get('template') or created
