@@ -18,3 +18,11 @@ upscale_models https://huggingface.co/gemasai/4x_NMKD-Superscale-SP_178000_G/res
 comfy/sams https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth sam_vit_b_01ec64.pth
 comfy/ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8m.pt face_yolov8m.pt
 comfy/ultralytics/bbox https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt hand_yolov8s.pt
+
+# Wan 2.2 14B video, used by workflows/wan2.2-flf2v.json (first + last frame) and wan2.2-i2v.json (one image);
+# both are ComfyUI's own templates. The VAE is wan_2.1_vae above.
+diffusion_models https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+diffusion_models https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors
+text_encoders https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors umt5_xxl_fp8_e4m3fn_scaled.safetensors
+Lora https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
+Lora https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors

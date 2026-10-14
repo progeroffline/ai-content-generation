@@ -93,6 +93,8 @@ for f in json.load(sys.stdin):
     if f["name"].endswith(".json"): print(f["name"] + "\t" + f["download_url"])' 2>/dev/null) || log "no workflows in the repo folder"
 echo "$workflows" | while IFS=$'\t' read -r name url; do
     [ -n "$name" ] || continue
+    # Kept once present, like models: a restart must not drop changes saved into the same file.
+    [ -s "dlbackend/ComfyUI/user/default/workflows/$name" ] && { log "present: workflow $name"; continue; }
     curl -fsSL "$url" -o "dlbackend/ComfyUI/user/default/workflows/$name" && log "workflow ready: $name" || log "workflow FAILED: $name"
 done
 # Opens lustify-krea2.json on a fresh ComfyUI canvas instead of the stock Z-Image graph.
