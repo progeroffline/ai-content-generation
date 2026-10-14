@@ -14,6 +14,7 @@ STAGES = [
     (re.compile(r'studio-provision\].*updating SwarmUI'), 'Автонастройка: обновление SwarmUI'),
     (re.compile(r'studio-provision\].*installing ComfyUI backend'), 'Автонастройка: установка движка'),
     (re.compile(r'studio-provision\].*downloading (\S+)'), 'Автонастройка: загрузка модели'),
+    (re.compile(r'studio-provision\].*installing node packs'), 'Автонастройка: установка узлов ComfyUI'),
     (re.compile(r'studio-provision\].*provisioning finished'), 'Автонастройка завершена'),
     (re.compile(r'Rebuilding|Build succeeded'), 'Сборка SwarmUI'),
     (re.compile(r'SwarmUI v[\d.]+ .* is now running'), 'SwarmUI запущен, загружается движок'),
