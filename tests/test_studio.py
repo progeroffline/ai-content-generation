@@ -84,6 +84,25 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Vast._stage({'actual_status': 'loading', 'status_msg': 'a\nPull complete'}, []),
                          'Загрузка образа: Pull complete')
         self.assertEqual(Vast._stage({'actual_status': 'exited', 'intended_status': 'stopped'}, log), 'Остановлен')
+        self.assertEqual(Vast._stage({'actual_status': 'loading', 'status_msg': '#12 0.529 Installing IPython kernel spec'}, []),
+                         'Загрузка образа: Installing IPython kernel spec')
+        self.assertLess(Vast._rank('Контейнер запущен'), Vast._rank('Автонастройка: установка движка'))
+        self.assertLess(Vast._rank('Сборка SwarmUI'), Vast._rank('Готов к генерации'))
+
+    async def test_progress_never_steps_back_and_cleans_log(self):
+        class LogVast(Vast):
+            text = ''
+            async def request(self, method, path, **kwargs):
+                return {'instances': {'id': 7, 'actual_status': 'running', 'intended_status': 'running'}}
+            async def _container_logs(self, instance_id):
+                return self.text.split('\n')
+            async def _swarm_ready(self, row):
+                return False
+        vast = LogVast('k', None)
+        vast.text = '[studio-provision] 1 installing ComfyUI backend'
+        self.assertEqual((await vast.progress(7))['stage'], 'Автонастройка: установка движка')
+        vast.text = 'Downloading wheel'
+        self.assertEqual((await vast.progress(7))['stage'], 'Автонастройка: установка движка')
 
 
 class AppTests(unittest.IsolatedAsyncioTestCase):

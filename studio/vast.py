@@ -8,7 +8,7 @@ import time
 import aiohttp
 
 log = logging.getLogger('studio.vast')
-ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+ANSI = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
 # Milestones of a SwarmUI server coming up, in log order: (pattern, stage shown to the user).
 STAGES = [
     (re.compile(r'studio-provision\].*updating SwarmUI'), 'Автонастройка: обновление SwarmUI'),
@@ -36,6 +36,7 @@ class Vast:
         self.image = (image or 'vastai/comfy:@vastai-automatic-tag').strip()
         self.recommended = None
         self.log_cache = {}
+        self.reached = {}
 
     async def request(self, method, path, **kwargs):
         headers = {'Authorization': 'Bearer '+self.api_key, 'Accept': 'application/json'}
@@ -162,12 +163,16 @@ class Vast:
             return cached[1]
         lines = []
         try:
-            ticket = await self.request('PUT', f'/api/v0/instances/request_logs/{instance_id}/', json={'tail': '400'})
+            # A long tail keeps the stage markers that noisy installers would otherwise push out.
+            ticket = await self.request('PUT', f'/api/v0/instances/request_logs/{instance_id}/', json={'tail': '3000'})
             for _ in range(6):
                 await asyncio.sleep(1.5)
                 async with self.session.get(ticket['result_url']) as response:
                     if response.status == 200:
-                        lines = ANSI.sub('', await response.text()).splitlines()
+                        text = ANSI.sub('', await response.text())
+                        # Progress bars redraw one line with carriage returns; keep only what is finally shown.
+                        lines = [line.rsplit('\r', 1)[-1] for line in text.split('\n')]
+                        lines = [line for line in lines if line.strip() and 'No such container' not in line]
                         break
         except (VastError, KeyError, aiohttp.ClientError, asyncio.TimeoutError) as error:
             log.warning('logs for instance %s unavailable: %r', instance_id, error)
@@ -199,8 +204,8 @@ class Vast:
         if row.get('intended_status') == 'stopped' or status in ('exited', 'stopped'):
             return 'Остановлен'
         if status != 'running':
-            message = (row.get('status_msg') or '').strip().splitlines()
-            return 'Загрузка образа' + (': '+message[-1][:160] if message else '')
+            message = re.sub(r'^#\d+ [\d.]+ ', '', ((row.get('status_msg') or '').strip().splitlines() or [''])[-1])
+            return 'Загрузка образа' + (': '+message[:160] if message else '')
         stage, position = 'Контейнер запущен', -1
         for pattern, name in STAGES:
             for index in range(len(lines)-1, position, -1):
@@ -212,15 +217,39 @@ class Vast:
 
     async def progress(self, instance_id):
         instance_id = int(instance_id)
-        data = await self.request('GET', f'/api/v0/instances/{instance_id}/')
+        try:
+            data = await self.request('GET', f'/api/v0/instances/{instance_id}/')
+        except VastError as error:
+            # Right after renting Vast may not describe the new instance yet.
+            log.info('instance %s not described yet: %s', instance_id, error)
+            data = {}
         row = data.get('instances') or {}
-        if not row or row.get('id') != instance_id:
+        if row and row.get('id') != instance_id:
             raise ValueError('Инстанс не найден среди ваших серверов')
-        lines = await self._container_logs(instance_id)
+        if not row:
+            return {'id': instance_id, 'status': None, 'status_msg': '', 'stage': 'Сервер создаётся', 'ready': False,
+                    'swarm_url': None, 'logs': []}
+        lines = await self._container_logs(instance_id) if row.get('actual_status') else []
         ready = row.get('actual_status') == 'running' and await self._swarm_ready(row)
+        stage = 'Готов к генерации' if ready else self._stage(row, lines)
+        if row.get('actual_status') == 'running':
+            # Never step back: a marker can still drop out of the log tail.
+            rank = self._rank(stage)
+            best = self.reached.get(instance_id, (-1, stage))
+            if rank < best[0]:
+                stage = best[1]
+            else:
+                self.reached[instance_id] = rank, stage
+        else:
+            self.reached.pop(instance_id, None)
         return {'id': instance_id, 'status': row.get('actual_status'), 'status_msg': (row.get('status_msg') or '')[-600:],
-                'stage': 'Готов к генерации' if ready else self._stage(row, lines), 'ready': ready,
-                'swarm_url': self._swarm_url(row) if ready else None, 'logs': lines[-400:]}
+                'stage': stage, 'ready': ready, 'swarm_url': self._swarm_url(row) if ready else None, 'logs': lines[-400:]}
+
+    @staticmethod
+    def _rank(stage):
+        if stage == 'Готов к генерации':
+            return len(STAGES)
+        return next((i for i, (_, name) in enumerate(STAGES) if stage.startswith(name)), -1)
 
     async def _owned(self, instance_id):
         try:
