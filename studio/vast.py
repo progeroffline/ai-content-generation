@@ -8,6 +8,17 @@ import time
 import aiohttp
 
 log = logging.getLogger('studio.vast')
+ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+# Milestones of a SwarmUI server coming up, in log order: (pattern, stage shown to the user).
+STAGES = [
+    (re.compile(r'studio-provision\].*updating SwarmUI'), 'Автонастройка: обновление SwarmUI'),
+    (re.compile(r'studio-provision\].*installing ComfyUI backend'), 'Автонастройка: установка движка'),
+    (re.compile(r'studio-provision\].*downloading (\S+)'), 'Автонастройка: загрузка модели'),
+    (re.compile(r'studio-provision\].*provisioning finished'), 'Автонастройка завершена'),
+    (re.compile(r'Rebuilding|Build succeeded'), 'Сборка SwarmUI'),
+    (re.compile(r'SwarmUI v[\d.]+ .* is now running'), 'SwarmUI запущен, загружается движок'),
+    (re.compile(r'Self-Start ComfyUI-\d+ on port \d+ started'), 'Движок запущен'),
+]
 SECRET = re.compile(r"('[^']*(?:token|api_key|password)[^']*': )'[^']*'")
 
 
@@ -24,6 +35,7 @@ class Vast:
         self.template_id = str(template_id).strip() if template_id else None
         self.image = (image or 'vastai/comfy:@vastai-automatic-tag').strip()
         self.recommended = None
+        self.log_cache = {}
 
     async def request(self, method, path, **kwargs):
         headers = {'Authorization': 'Bearer '+self.api_key, 'Accept': 'application/json'}
@@ -83,7 +95,7 @@ class Vast:
         return {key: item.get(key) for key in (
             'id', 'gpu_name', 'num_gpus', 'gpu_ram', 'cpu_ram', 'cpu_cores_effective',
             'disk_space', 'dph_total', 'reliability2', 'inet_down', 'inet_up',
-            'geolocation', 'machine_id', 'verification')}
+            'geolocation', 'machine_id', 'verification', 'inet_down_cost')}
 
     async def instances(self):
         data = await self.request('GET', '/api/v1/instances')
@@ -91,7 +103,7 @@ class Vast:
         return [self._instance(row) for row in rows]
 
     async def offers(self, gpu_names, max_price, disk=200, limit=20):
-        allowed = {'RTX 3090', 'RTX 4090', 'RTX 5090', 'A100 SXM4', 'A100 PCIE', 'H100 SXM', 'H100 PCIE'}
+        allowed = {'RTX 3090', 'RTX 4090', 'RTX 5090', 'RTX A5000', 'A100 SXM4', 'A100 PCIE', 'H100 SXM', 'H100 PCIE'}
         names = [name for name in gpu_names if name in allowed]
         if not names:
             raise ValueError('Выберите хотя бы один поддерживаемый GPU')
@@ -111,6 +123,8 @@ class Vast:
             'verified': {'eq': True}, 'num_gpus': {'eq': 1},
             'gpu_name': {'in': names}, 'dph_total': {'lte': price},
             'reliability2': {'gte': 0.97}, 'disk_space': {'gte': disk},
+            # Hugging Face and Civitai downloads are unreliable from there.
+            'geolocation': {'notin': ['CN']},
         }
         # Hosts the image cannot run on (e.g. too old CUDA) would start a broken instance.
         query.update(json.loads((await self._recommended() or {}).get('extra_filters') or '{}'))
@@ -141,14 +155,72 @@ class Vast:
             return self.template_id
         return (await self._recommended() or {}).get('hash_id')
 
-    async def comfy_endpoint(self):
-        # ComfyUI of the running instance: the template publishes it on 8188 behind the instance token.
-        data = await self.request('GET', '/api/v1/instances')
-        for row in data.get('instances', []):
-            mapped = (row.get('ports') or {}).get('8188/tcp')
-            if row.get('actual_status') == 'running' and mapped and row.get('public_ipaddr') and row.get('jupyter_token'):
-                return f"http://{row['public_ipaddr'].strip()}:{mapped[0]['HostPort']}", 'Bearer '+row['jupyter_token']
-        return None
+    async def _container_logs(self, instance_id):
+        # Vast writes the container log to a temporary URL a few seconds after the request.
+        cached = self.log_cache.get(instance_id)
+        if cached and time.monotonic()-cached[0] < 8:
+            return cached[1]
+        lines = []
+        try:
+            ticket = await self.request('PUT', f'/api/v0/instances/request_logs/{instance_id}/', json={'tail': '400'})
+            for _ in range(6):
+                await asyncio.sleep(1.5)
+                async with self.session.get(ticket['result_url']) as response:
+                    if response.status == 200:
+                        lines = ANSI.sub('', await response.text()).splitlines()
+                        break
+        except (VastError, KeyError, aiohttp.ClientError, asyncio.TimeoutError) as error:
+            log.warning('logs for instance %s unavailable: %r', instance_id, error)
+            return cached[1] if cached else []
+        self.log_cache[instance_id] = time.monotonic(), lines
+        return lines
+
+    async def _swarm_ready(self, row):
+        # Ask SwarmUI itself (through the instance's token proxy) whether its backend is up.
+        mapped = (row.get('ports') or {}).get('7865/tcp')
+        if not (mapped and row.get('public_ipaddr') and row.get('jupyter_token')):
+            return False
+        base = f"http://{row['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/API/"
+        headers = {'Authorization': 'Bearer '+row['jupyter_token']}
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with self.session.post(base+'GetNewSession', json={}, headers=headers, timeout=timeout) as r:
+                session_id = (await r.json(content_type=None)).get('session_id')
+            async with self.session.post(base+'ListBackends', json={'session_id': session_id}, headers=headers, timeout=timeout) as r:
+                backends = await r.json(content_type=None)
+            return any(b.get('status') == 'running' for b in backends.values() if isinstance(b, dict))
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, AttributeError) as error:
+            log.debug('SwarmUI of %s not answering: %r', row.get('id'), error)
+            return False
+
+    @staticmethod
+    def _stage(row, lines):
+        status = row.get('actual_status')
+        if row.get('intended_status') == 'stopped' or status in ('exited', 'stopped'):
+            return 'Остановлен'
+        if status != 'running':
+            message = (row.get('status_msg') or '').strip().splitlines()
+            return 'Загрузка образа' + (': '+message[-1][:160] if message else '')
+        stage, position = 'Контейнер запущен', -1
+        for pattern, name in STAGES:
+            for index in range(len(lines)-1, position, -1):
+                match = pattern.search(lines[index])
+                if match:
+                    stage, position = name + (' '+match.group(1).split('/')[-1] if match.groups() else ''), index
+                    break
+        return stage
+
+    async def progress(self, instance_id):
+        instance_id = int(instance_id)
+        data = await self.request('GET', f'/api/v0/instances/{instance_id}/')
+        row = data.get('instances') or {}
+        if not row or row.get('id') != instance_id:
+            raise ValueError('Инстанс не найден среди ваших серверов')
+        lines = await self._container_logs(instance_id)
+        ready = row.get('actual_status') == 'running' and await self._swarm_ready(row)
+        return {'id': instance_id, 'status': row.get('actual_status'), 'status_msg': (row.get('status_msg') or '')[-600:],
+                'stage': 'Готов к генерации' if ready else self._stage(row, lines), 'ready': ready,
+                'swarm_url': self._swarm_url(row) if ready else None, 'logs': lines[-400:]}
 
     async def _owned(self, instance_id):
         try:

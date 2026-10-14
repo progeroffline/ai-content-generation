@@ -26,4 +26,3 @@ jobs:
       - run: cp .env.example .env && docker compose config
         env:
           STUDIO_PASSWORD: ci-password-never-deploy
-          COMFY_URL: http://127.0.0.1:18188
