@@ -24,7 +24,9 @@ download_models(){
         auth=()
         case "$url" in *civitai.com*)
             [ -n "${CIVITAI_TOKEN:-}" ] || { log "skip $name: CIVITAI_TOKEN is not set"; continue; }
-            auth=(-H "Authorization: Bearer $CIVITAI_TOKEN");;
+            # Passed through a config file so the token does not show up in the process list.
+            printf 'header = "Authorization: Bearer %s"\n' "$CIVITAI_TOKEN" > /tmp/civitai.curl
+            auth=(--config /tmp/civitai.curl);;
         esac
         log "downloading $dest"
         # curl, unlike wget, does not forward the Civitai header to the storage host it redirects to.
@@ -74,6 +76,8 @@ if [ -f Data/Settings.fds ]; then
 else
     echo 'IsInstalled: true' > Data/Settings.fds
 fi
+# Keep model metadata in a JSON next to the model: rewriting a 25 GB model needs as much free disk again.
+sed -i -E 's/^(\s*)EditMetadataWriteJSON: false/\1EditMetadataWriteJSON: true/; s/^(\s*)ImageMetadataIncludeModelHash: true/\1ImageMetadataIncludeModelHash: false/' Data/Settings.fds
 
 wait
 # SwarmUI's own Krea 2 generation looks for the same encoder under another name.
