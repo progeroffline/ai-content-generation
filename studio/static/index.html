@@ -12,17 +12,17 @@
 <div id="instances" class="list"></div>
 </section>
 <section aria-labelledby="new-title">
-<div class="section-head"><div><h2 id="new-title">Новый сервер</h2><p class="lead">Сервер сам установит SwarmUI, ComfyUI, модели и workflows — это 10–15 минут после аренды.</p></div></div>
+<div class="section-head"><div><h2 id="new-title">Новый сервер</h2><p class="lead">Сервер сам установит SwarmUI, ComfyUI, модели и workflows — это 15–20 минут после аренды. В поиске только хосты с RAM от 60 ГБ, интернетом от 500 Мбит/с и трафиком до $0.02/ГБ.</p></div></div>
 <form id="offer-form" class="card filters">
 <div><span class="field-label" id="gpu-label">Видеокарта</span>
 <fieldset class="chips" aria-labelledby="gpu-label">
 <label class="chip"><input type="checkbox" name="gpu" value="RTX 3090" checked><span>RTX 3090</span></label>
 <label class="chip"><input type="checkbox" name="gpu" value="RTX 4090" checked><span>RTX 4090</span></label>
 <label class="chip"><input type="checkbox" name="gpu" value="RTX A5000" checked><span>RTX A5000</span></label>
-<label class="chip"><input type="checkbox" name="gpu" value="RTX 5090"><span>RTX 5090</span></label>
+<label class="chip"><input type="checkbox" name="gpu" value="RTX 5090" checked><span>RTX 5090</span></label>
 </fieldset></div>
 <div class="inline-fields">
-<div><label class="field-label" for="max-price">Цена до, $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.45" required></div>
+<div><label class="field-label" for="max-price">Цена до, $/час</label><input id="max-price" type="number" min="0.01" max="20" step="0.01" value="0.8" required></div>
 <div><label class="field-label" for="disk">Диск, ГБ</label><input id="disk" type="number" min="50" max="2000" step="10" value="130" required></div>
 <div><button class="btn btn-primary" type="submit" id="search">Найти серверы</button></div>
 </div>

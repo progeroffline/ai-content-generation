@@ -28,6 +28,9 @@ class VastError(Exception):
 
 
 class Vast:
+    MIN_RAM_GB = 60
+    MIN_DOWN_MBPS = 500
+    MAX_DOWN_COST = 0.02  # $/GB
     API = 'https://console.vast.ai'
 
     def __init__(self, api_key, session, template_id=None, image=None):
@@ -126,6 +129,10 @@ class Vast:
             'verified': {'eq': True}, 'num_gpus': {'eq': 1},
             'gpu_name': {'in': names}, 'dph_total': {'lte': price},
             'reliability2': {'gte': 0.97}, 'disk_space': {'gte': disk},
+            # LUSTIFY fp16 and Wan 2.2's two 14B halves are partly held in RAM while they run.
+            'cpu_ram': {'gte': self.MIN_RAM_GB*1024},
+            # ~75 GB of models come down on every new server.
+            'inet_down': {'gte': self.MIN_DOWN_MBPS}, 'inet_down_cost': {'lte': self.MAX_DOWN_COST},
             # Hugging Face and Civitai downloads are unreliable from there.
             'geolocation': {'notin': ['CN']},
         }
