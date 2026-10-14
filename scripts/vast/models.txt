@@ -1,0 +1,3 @@
+# Models downloaded on every new Vast server: <SwarmUI Models subfolder> <url> <file name>
+# Civitai links need CIVITAI_TOKEN in the template (see scripts/vast/create_template.py).
+Stable-Diffusion https://civitai.com/api/download/models/3112728?fileId=2997637 LUSTIFY_v10_Krea2_fp8.safetensors

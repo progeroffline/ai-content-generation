@@ -68,7 +68,15 @@ class Vast:
             'id', 'actual_status', 'intended_status', 'label', 'gpu_name', 'num_gpus',
             'gpu_ram', 'cpu_ram', 'cpu_cores_effective', 'disk_space', 'dph_total',
             'reliability2', 'public_ipaddr', 'ssh_host', 'ssh_port', 'start_date',
-            'geolocation', 'machine_id')}
+            'geolocation', 'machine_id')} | {'swarm_url': cls._swarm_url(item)}
+
+    @staticmethod
+    def _swarm_url(item):
+        # SwarmUI of the template is published on 7865 behind the instance token (Caddy).
+        mapped = (item.get('ports') or {}).get('7865/tcp')
+        if item.get('actual_status') == 'running' and mapped and item.get('public_ipaddr') and item.get('jupyter_token'):
+            return f"http://{item['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/?token={item['jupyter_token']}"
+        return None
 
     @classmethod
     def _offer(cls, item):
@@ -104,9 +112,8 @@ class Vast:
             'gpu_name': {'in': names}, 'dph_total': {'lte': price},
             'reliability2': {'gte': 0.97}, 'disk_space': {'gte': disk},
         }
-        if not self.template_id:
-            # Hosts the template cannot run on (e.g. too old CUDA) would start a broken instance.
-            query.update(json.loads((await self._recommended() or {}).get('extra_filters') or '{}'))
+        # Hosts the image cannot run on (e.g. too old CUDA) would start a broken instance.
+        query.update(json.loads((await self._recommended() or {}).get('extra_filters') or '{}'))
         data = await self.request('POST', '/api/v0/bundles', json=query)
         rows = data.get('offers', data if isinstance(data, list) else [])
         log.info('offers gpu=%s max_price=%s disk=%s -> %d found', names, price, disk, len(rows))

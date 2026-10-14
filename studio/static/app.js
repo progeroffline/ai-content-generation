@@ -114,6 +114,7 @@ function serverCard(item, offer=false){
     state.onclick=async()=>{state.disabled=true;try{await api(`/api/vast/instances/${item.id}/state`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:running?'stopped':'running'})});await loadInstances();}catch(e){$('vast-message').textContent=e.message;}finally{state.disabled=false;}};
     const destroy=el('button','danger','Удалить');
     destroy.onclick=async()=>{const confirmation=window.prompt(`Это удалит сервер и локальные данные. Введите DESTROY ${item.id}`);if(confirmation!==`DESTROY ${item.id}`)return;destroy.disabled=true;try{await api(`/api/vast/instances/${item.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:confirmation})});await loadInstances();}catch(e){$('vast-message').textContent=e.message;}finally{destroy.disabled=false;}};
+    if(item.swarm_url){const open=el('a','primary compact','Открыть SwarmUI');open.href=item.swarm_url;open.target='_blank';open.rel='noopener noreferrer';actions.append(open);}
     actions.append(state,destroy);card.append(el('p','status-line',`Статус: ${item.actual_status||item.intended_status||'неизвестен'} · ID ${item.id}`));
   }
   card.append(actions);return card;
