@@ -98,7 +98,8 @@ function offerCard(item){
   const card=el('article','card offer');
   const head=el('div','server-top');head.append(el('h3','',item.gpu_name||'GPU'),price(item.dph_total));
   const meta=el('div','meta',`${gb(item.gpu_ram)} видеопамяти · ${gb(item.cpu_ram)} RAM · ${item.geolocation||'локация неизвестна'}`);
-  const meta2=el('div','meta',`Трафик $${Number(item.inet_down_cost||0).toFixed(4)}/ГБ · надёжность ${Math.round(Number(item.reliability2||0)*100)}%`);
+  const meta2=el('div','meta',`Интернет ↓ ${Math.round(Number(item.inet_down||0))} / ↑ ${Math.round(Number(item.inet_up||0))} Мбит/с · надёжность ${Math.round(Number(item.reliability2||0)*100)}%`);
+  const meta3=el('div','meta',`Трафик ↓ $${Number(item.inet_down_cost||0).toFixed(4)}/ГБ · ↑ $${Number(item.inet_up_cost||0).toFixed(4)}/ГБ`);
   const rent=el('button','btn btn-primary','Арендовать');rent.type='button';
   rent.onclick=async()=>{
     rent.disabled=true;rent.textContent='Арендуем…';card.querySelector('.notice')?.remove();
@@ -110,7 +111,7 @@ function offerCard(item){
       rent.textContent=gone?'Занят':'Арендовать';rent.disabled=gone;card.append(el('p','notice error',text));
     }
   };
-  card.append(head,meta,meta2,rent);
+  card.append(head,meta,meta2,meta3,rent);
   return card;
 }
 $('offer-form').onsubmit=async e=>{

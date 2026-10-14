@@ -98,7 +98,7 @@ class Vast:
         return {key: item.get(key) for key in (
             'id', 'gpu_name', 'num_gpus', 'gpu_ram', 'cpu_ram', 'cpu_cores_effective',
             'disk_space', 'dph_total', 'reliability2', 'inet_down', 'inet_up',
-            'geolocation', 'machine_id', 'verification', 'inet_down_cost')}
+            'geolocation', 'machine_id', 'verification', 'inet_down_cost', 'inet_up_cost')}
 
     async def instances(self):
         data = await self.request('GET', '/api/v1/instances')
