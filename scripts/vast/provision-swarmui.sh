@@ -1,21 +1,28 @@
 #!/bin/bash
-# First-boot provisioning for the Vast SwarmUI image (run via PROVISIONING_SCRIPT).
-# Installs SwarmUI's ComfyUI backend, the node packs from custom_nodes.txt, the models from models.txt
-# and the workflows from workflows/ (they show up in SwarmUI's "Comfy Workflow" tab).
+# Provisioning for the Vast SwarmUI image (run via PROVISIONING_SCRIPT on every start, see the boot hook below).
+# Installs SwarmUI's ComfyUI backend, the node packs from custom_nodes.txt, the models and workflows from
+# models.txt and the workflows from workflows/ (they show up in SwarmUI's "Comfy Workflow" tab).
+# Anything already in place is skipped, so a restart only fills in what is missing.
 set -uo pipefail
 SWARM=${WORKSPACE:-/workspace}/SwarmUI
 RAW=${STUDIO_REPO_RAW:-https://raw.githubusercontent.com/progeroffline/ai-content-generation/main}
 log(){ echo "[studio-provision] $(date +%T) $*"; }
 
 cd "$SWARM" || { log "SwarmUI not found in $SWARM"; exit 1; }
+
+# Vast runs PROVISIONING_SCRIPT (boot step 75) only while /.provisioning_complete is absent;
+# removing it in an earlier boot step makes every start run this script again.
+printf '#!/bin/bash\nrm -f /.provisioning_complete\n' > /etc/vast_boot.d/70-studio-reprovision.sh
+chmod +x /etc/vast_boot.d/70-studio-reprovision.sh
 . /venv/main/bin/activate
 
-# $1: "swarm" for SwarmUI model folders, "comfy" for comfy/<subfolder> (needs the backend installed).
+# $1: "swarm" for SwarmUI model folders, "comfy" for comfy/<subfolder> and workflows (need the backend installed).
 download_models(){
     curl -fsSL "$RAW/scripts/vast/models.txt" -o "/tmp/models-$1.txt" || { log "models.txt unavailable"; return; }
     grep -vE '^\s*(#|$)' "/tmp/models-$1.txt" | while read -r folder url name; do
         case "$folder" in
             comfy/*) [ "$1" = comfy ] || continue; dir="dlbackend/ComfyUI/models/${folder#comfy/}";;
+            workflows) [ "$1" = comfy ] || continue; dir="dlbackend/ComfyUI/user/default/workflows";;
             *) [ "$1" = swarm ] || continue; dir="Models/$folder";;
         esac
         dest="$dir/$name"
@@ -40,7 +47,8 @@ download_models(){
 
 download_models swarm &
 
-# The image pins an old SwarmUI that misses newer model families (e.g. Krea 2); the latest needs .NET 10.
+# The image pins an old SwarmUI whose ComfyUI frontend cannot open the workflows (Krea 2, subgraphs);
+# the latest needs .NET 10.
 # SwarmUI rebuilds itself on start when the checkout changes.
 log "updating SwarmUI"
 git fetch -q origin && git checkout -q -B master origin/master || log "SwarmUI update FAILED"
@@ -60,14 +68,30 @@ python -c "import torchsde" || log "backend requirements still incomplete"
 log "installing node packs"
 curl -fsSL "$RAW/scripts/vast/custom_nodes.txt" | grep -vE '^\s*(#|$)' | while read -r repo; do
     dir="dlbackend/ComfyUI/custom_nodes/$(basename "$repo")"
-    [ -d "$dir" ] || git clone -q --depth 1 "$repo" "$dir" || { log "node pack FAILED: $repo"; continue; }
+    [ -d "$dir" ] && { log "node pack present: $(basename "$repo")"; continue; }
+    git clone -q --depth 1 "$repo" "$dir" || { log "node pack FAILED: $repo"; continue; }
+    # Only on a fresh clone: Impact-Pack's sam2 build pulls a whole new torch, which a restart must not redo.
     [ -f "$dir/requirements.txt" ] && { pip install -q -r "$dir/requirements.txt" || log "node pack requirements FAILED: $repo"; }
     log "node pack ready: $(basename "$repo")"
 done
+log "installing workflows"
 download_models comfy
-mkdir -p dlbackend/ComfyUI/user/default/workflows
-for name in lustify-krea2.json; do
-    curl -fsSL "$RAW/scripts/vast/workflows/$name" -o "dlbackend/ComfyUI/user/default/workflows/$name" && log "workflow ready: $name" || log "workflow FAILED: $name"
+# The author's workflow loads the int8_convrot variant; servers get Turbo fp16 (his pick for 24 GB cards).
+sed -i 's/lustify-v10-krea-turbo-int8_convrot\.safetensors/lustify-v10-krea-turbo-fp16.safetensors/' \
+    dlbackend/ComfyUI/user/default/workflows/lustify-krea2.json 2>/dev/null
+# raw.githubusercontent.com cannot list a folder; the GitHub API can (RAW is .../<owner>/<repo>/<ref>).
+listing=$(echo "$RAW" | sed -E 's#^https://raw\.githubusercontent\.com/([^/]+/[^/]+)/(.+)$#https://api.github.com/repos/\1/contents/scripts/vast/workflows?ref=\2#')
+workflows=$(curl -fsSL "$listing" | python -c 'import json, sys
+for f in json.load(sys.stdin):
+    if f["name"].endswith(".json"): print(f["name"] + "\t" + f["download_url"])' 2>/dev/null) || log "no workflows in the repo folder"
+echo "$workflows" | while IFS=$'\t' read -r name url; do
+    [ -n "$name" ] || continue
+    curl -fsSL "$url" -o "dlbackend/ComfyUI/user/default/workflows/$name" && log "workflow ready: $name" || log "workflow FAILED: $name"
+done
+# Opens lustify-krea2.json on a fresh ComfyUI canvas instead of the stock Z-Image graph.
+mkdir -p dlbackend/ComfyUI/custom_nodes/comfy-studio/web
+for file in __init__.py web/default_workflow.js; do
+    curl -fsSL "$RAW/scripts/vast/comfy-studio/$file" -o "dlbackend/ComfyUI/custom_nodes/comfy-studio/$file" || log "comfy-studio FAILED: $file"
 done
 mkdir -p Data
 [ -f Data/Backends.fds ] || printf '0:\n\ttype: comfyui_selfstart\n\ttitle: ComfyUI\n\tenabled: true\n\tsettings:\n\t\tStartScript: dlbackend/ComfyUI/main.py\n\t\tAutoUpdate: false\n' > Data/Backends.fds
@@ -80,6 +104,4 @@ fi
 sed -i -E 's/^(\s*)EditMetadataWriteJSON: false/\1EditMetadataWriteJSON: true/; s/^(\s*)ImageMetadataIncludeModelHash: true/\1ImageMetadataIncludeModelHash: false/' Data/Settings.fds
 
 wait
-# SwarmUI's own Krea 2 generation looks for the same encoder under another name.
-[ -e Models/text_encoders/qwen3vl_4b.safetensors ] || ln -s qwen3vl_4b_fp8_scaled.safetensors Models/text_encoders/qwen3vl_4b.safetensors
 log "provisioning finished"

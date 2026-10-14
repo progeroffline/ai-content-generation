@@ -86,10 +86,11 @@ class Vast:
 
     @staticmethod
     def _swarm_url(item):
-        # SwarmUI of the template is published on 7865 behind the instance token (Caddy).
+        # SwarmUI of the template is published on 7865 behind the instance token (Caddy);
+        # the hash opens its Comfy Workflow tab, where the studio workflows live.
         mapped = (item.get('ports') or {}).get('7865/tcp')
         if item.get('actual_status') == 'running' and mapped and item.get('public_ipaddr') and item.get('jupyter_token'):
-            return f"http://{item['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/?token={item['jupyter_token']}"
+            return f"http://{item['public_ipaddr'].strip()}:{mapped[0]['HostPort']}/?token={item['jupyter_token']}#,comfyworkflow"
         return None
 
     @classmethod

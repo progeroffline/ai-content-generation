@@ -57,7 +57,7 @@ class VastPayloadTests(unittest.IsolatedAsyncioTestCase):
     def test_instance_exposes_swarm_link_only_when_running(self):
         row = {'actual_status': 'running', 'public_ipaddr': '3.3.3.3 ', 'jupyter_token': 'tok',
                'ports': {'7865/tcp': [{'HostPort': '5000'}]}}
-        self.assertEqual(Vast._instance(row)['swarm_url'], 'http://3.3.3.3:5000/?token=tok')
+        self.assertEqual(Vast._instance(row)['swarm_url'], 'http://3.3.3.3:5000/?token=tok#,comfyworkflow')
         self.assertIsNone(Vast._instance({**row, 'actual_status': 'loading'})['swarm_url'])
 
     async def test_rent_resolves_recommended_template_for_image(self):

@@ -1,11 +1,17 @@
 # Files downloaded on every new Vast server: <folder> <url> <file name>
-# <folder> is a SwarmUI Models subfolder, or comfy/<subfolder> for ComfyUI's own models directory.
+# <folder> is a SwarmUI Models subfolder, comfy/<subfolder> for ComfyUI's own models directory,
+# or workflows for ComfyUI's workflow list.
 # Civitai links need CIVITAI_TOKEN in the template (see scripts/vast/create_template.py).
 
 # LUSTIFY v10 (Krea 2), Turbo fp16 — the author's pick for 24 GB cards
 diffusion_models https://civitai.com/api/download/models/3112728?fileId=3015314 lustify-v10-krea-turbo-fp16.safetensors
+# Q2_K GGUF behind the workflow's "Use GGUF?" switch; ComfyUI checks the loader even when the switch is off
+diffusion_models https://civitai.com/api/download/models/3112728?fileId=3001078 lustify-v10-krea-turbo-Q2_K.gguf
 
-# Used by workflows/lustify-krea2.json (the author's workflow); SwarmUI's own generation fetches its encoder itself
+# The author's Krea 2 workflow (Lustify Workflows, "KREA 2" version); ComfyUI opens it by default
+workflows https://civitai.com/api/download/models/3123550?fileId=3007440 lustify-krea2.json
+
+# Used by the workflow above
 text_encoders https://huggingface.co/Comfy-Org/Qwen3-VL/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors qwen3vl_4b_fp8_scaled.safetensors
 VAE https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors wan_2.1_vae.safetensors
 upscale_models https://huggingface.co/gemasai/4x_NMKD-Superscale-SP_178000_G/resolve/main/4x_NMKD-Superscale-SP_178000_G.pth 4x_NMKD-Superscale-SP_178000_G.pth

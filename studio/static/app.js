@@ -40,7 +40,7 @@ function instanceCard(item){
   const status=el('p','status');status.setAttribute('aria-live','polite');const dot=el('span','status-dot');const text=el('span','','Проверяем состояние…');status.append(dot,text);
   const steps=el('ol','steps');STEPS.forEach(s=>steps.append(el('li','',s)));steps.hidden=true;steps.setAttribute('aria-hidden','true');
   const actions=el('div','actions');
-  const link=el('a','btn btn-primary','Открыть SwarmUI ↗');link.target='_blank';link.rel='noopener noreferrer';link.hidden=true;
+  const link=el('a','btn btn-primary','Открыть ComfyUI ↗');link.target='_blank';link.rel='noopener noreferrer';link.hidden=true;
   const stopping=item.intended_status==='stopped';
   const toggle=el('button','btn',stopping?'Запустить':'Остановить');toggle.type='button';
   toggle.onclick=()=>act(toggle,`/api/vast/instances/${item.id}/state`,{method:'POST',body:JSON.stringify({state:stopping?'running':'stopped'})},stopping?'Запускаем…':'Останавливаем…');
