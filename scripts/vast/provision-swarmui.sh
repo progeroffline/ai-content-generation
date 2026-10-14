@@ -54,15 +54,40 @@ command -v aria2c >/dev/null || apt-get install -y -qq aria2 >/dev/null 2>&1 ||
     { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq aria2 >/dev/null 2>&1; } || log "aria2 install FAILED, downloads use curl"
 download_models swarm &
 
-# The image pins an old SwarmUI whose ComfyUI frontend cannot open the workflows (Krea 2, subgraphs);
-# the latest needs .NET 10.
-# SwarmUI rebuilds itself on start when the checkout changes.
+# The image ships SwarmUI 0.9.8-Beta, which forces ComfyUI frontend 1.37 onto current ComfyUI and
+# breaks the workflows. The latest SwarmUI needs .NET 10 and NuGet, which some hosts cannot reach, so
+# it is built here: on failure the checkout goes back to the build in place, and SwarmUI starts at once
+# instead of retrying a doomed build on every launch.
 log "updating SwarmUI"
-git fetch -q origin && git checkout -q -B master origin/master || log "SwarmUI update FAILED"
-if ! dotnet --list-sdks | grep -q '^10\.'; then
-    curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh &&
-        bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "${DOTNET_ROOT:-/opt/dotnet}" >/dev/null || log ".NET 10 install FAILED"
+[ -f src/bin/studio_image_commit ] || git rev-parse HEAD > src/bin/studio_image_commit
+target=$(git fetch -q origin && git rev-parse origin/master) || log "SwarmUI fetch FAILED"
+if [ -n "$target" ] && [ "$target" != "$(cat src/bin/studio_build 2>/dev/null)" ]; then
+    # Both NuGet and the .NET downloads sit behind Microsoft's CDN; without NuGet a build is pointless.
+    curl -fsS -m 20 -o /dev/null https://api.nuget.org/v3/index.json && nuget=yes || nuget=
+    if [ -n "$nuget" ] && ! dotnet --list-sdks | grep -q '^10\.'; then
+        curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh &&
+            bash /tmp/dotnet-install.sh --channel 10.0 --install-dir "${DOTNET_ROOT:-/opt/dotnet}" >/dev/null || log ".NET 10 install FAILED"
+    fi
+    if [ -n "$nuget" ] && dotnet --list-sdks | grep -q '^10\.'; then
+        log "building SwarmUI"
+        rm -rf src/bin/studio_new
+        if git checkout -q -B master "$target" &&
+            timeout 1200 dotnet build src/SwarmUI.csproj --configuration Release -o src/bin/studio_new >/tmp/swarm-build.log 2>&1 &&
+            [ -f src/bin/studio_new/SwarmUI.dll ]; then
+            rm -rf src/bin/live_release src/bin/extensions && mv src/bin/studio_new src/bin/live_release
+            echo "$target" > src/bin/studio_build
+            log "SwarmUI built"
+        else
+            log "SwarmUI build FAILED (see /tmp/swarm-build.log)"
+        fi
+    else
+        log "SwarmUI update skipped: .NET 10 or NuGet unreachable from this host"
+    fi
 fi
+# Keep the checkout on the commit the running build came from, or SwarmUI rebuilds itself on launch.
+built=$(cat src/bin/studio_build 2>/dev/null || cat src/bin/studio_image_commit)
+git checkout -q -B master "$built" || log "SwarmUI checkout FAILED"
+echo "$built" > src/bin/last_build
 
 if [ ! -f dlbackend/ComfyUI/main.py ]; then
     log "installing ComfyUI backend"
@@ -104,6 +129,12 @@ for file in __init__.py web/default_workflow.js; do
 done
 mkdir -p Data
 [ -f Data/Backends.fds ] || printf '0:\n\ttype: comfyui_selfstart\n\ttitle: ComfyUI\n\tenabled: true\n\tsettings:\n\t\tStartScript: dlbackend/ComfyUI/main.py\n\t\tAutoUpdate: false\n' > Data/Backends.fds
+# The image's SwarmUI would pin ComfyUI's frontend to 1.37; keep the one ComfyUI itself requires then.
+if [ -f src/bin/studio_build ]; then
+    sed -i '/^\t\tFrontendVersion:/d' Data/Backends.fds
+else
+    grep -q '^\t\tFrontendVersion:' Data/Backends.fds || printf '\t\tFrontendVersion: None\n' >> Data/Backends.fds
+fi
 if [ -f Data/Settings.fds ]; then
     sed -i 's/^IsInstalled: false/IsInstalled: true/' Data/Settings.fds
 else
