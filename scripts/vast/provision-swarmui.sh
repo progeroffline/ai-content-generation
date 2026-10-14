@@ -36,15 +36,22 @@ download_models(){
             auth=(--config /tmp/civitai.curl);;
         esac
         log "downloading $dest"
-        # curl, unlike wget, does not forward the Civitai header to the storage host it redirects to.
-        if curl -fsSL "${auth[@]}" -o "$dest.part" "$url" && [ -s "$dest.part" ]; then
-            mv "$dest.part" "$dest"; log "done: $dest"
+        # Civitai redirects to a signed storage URL; resolving it here keeps the token away from aria2c
+        # (curl, unlike wget, does not forward the header to the storage host either).
+        [ ${#auth[@]} -gt 0 ] && signed=$(curl -fsS "${auth[@]}" -o /dev/null -w '%{redirect_url}' "$url") && [ -n "$signed" ] &&
+            { url=$signed; auth=(); }
+        # Storage hosts cap a single connection (Civitai at ~15 MB/s); aria2c pulls one file over 16.
+        if [ ${#auth[@]} -eq 0 ] && command -v aria2c >/dev/null; then
+            aria2c -q -x 16 -s 16 -k 1M --file-allocation=none --allow-overwrite=true -d "$dir" -o "$name.part" "$url"
         else
-            rm -f "$dest.part"; log "FAILED: $dest"
-        fi
+            curl -fsSL "${auth[@]}" -o "$dest.part" "$url"
+        fi && [ -s "$dest.part" ] && { mv "$dest.part" "$dest"; log "done: $dest"; continue; }
+        rm -f "$dest.part" "$dest.part.aria2"; log "FAILED: $dest"
     done
 }
 
+command -v aria2c >/dev/null || apt-get install -y -qq aria2 >/dev/null 2>&1 ||
+    { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq aria2 >/dev/null 2>&1; } || log "aria2 install FAILED, downloads use curl"
 download_models swarm &
 
 # The image pins an old SwarmUI whose ComfyUI frontend cannot open the workflows (Krea 2, subgraphs);
