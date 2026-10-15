@@ -6,3 +6,5 @@ https://github.com/cubiq/ComfyUI_essentials
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts
 https://github.com/ltdrdata/ComfyUI-Impact-Pack
 https://github.com/ltdrdata/ComfyUI-Impact-Subpack
+https://github.com/Gourieff/ComfyUI-ReActor
+https://github.com/lbouaraba/comfyui-krea2edit

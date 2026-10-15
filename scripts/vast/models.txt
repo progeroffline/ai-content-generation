@@ -25,3 +25,28 @@ diffusion_models https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/res
 text_encoders https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors umt5_xxl_fp8_e4m3fn_scaled.safetensors
 loras https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
 loras https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+
+# LTX 2.3 22B distilled, used by workflows/video-from-frames.json (first + last frame). Full checkpoints: VAE,
+# audio VAE and vocoder are inside. Sulphur 2 is its uncensored finetune with the same layout
+# (workflows/video-from-frames-sulphur.json).
+checkpoints https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-distilled-fp8.safetensors ltx-2.3-22b-distilled-fp8.safetensors
+checkpoints https://huggingface.co/Civitai/Sulphur-2-distilled-fp8/resolve/main/sulphur_distil_fp8mixed.safetensors sulphur_distil_fp8mixed.safetensors
+text_encoders https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors gemma_3_12B_it_fp4_mixed.safetensors
+
+# Krea 2 edit (comfyui-krea2edit)
+vae https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors qwen_image_vae.safetensors
+
+# ReActor, used by workflows/Swap face.json. It reads these from ComfyUI/models, which the Dockerfile links here.
+insightface https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/inswapper_128.onnx inswapper_128.onnx
+insightface/models/buffalo_l https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/1k3d68.onnx 1k3d68.onnx
+insightface/models/buffalo_l https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/2d106det.onnx 2d106det.onnx
+insightface/models/buffalo_l https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/det_10g.onnx det_10g.onnx
+insightface/models/buffalo_l https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/genderage.onnx genderage.onnx
+insightface/models/buffalo_l https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/w600k_r50.onnx w600k_r50.onnx
+facerestore_models https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/GFPGANv1.3.pth GFPGANv1.3.pth
+facerestore_models https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/GFPGANv1.4.pth GFPGANv1.4.pth
+facerestore_models https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/codeformer-v0.1.0.pth codeformer-v0.1.0.pth
+facerestore_models https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/GPEN-BFR-512.onnx GPEN-BFR-512.onnx
+nsfw_detector/vit-base-nsfw-detector https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/config.json config.json
+nsfw_detector/vit-base-nsfw-detector https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/model.safetensors model.safetensors
+nsfw_detector/vit-base-nsfw-detector https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/preprocessor_config.json preprocessor_config.json
